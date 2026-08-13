@@ -35,7 +35,7 @@ const clamp = (v, min = 0, max = 100) => Math.max(min, Math.min(max, v));
 const money = (v) => Number(Math.round(v || 0)).toLocaleString('uk-UA');
 
 const START = {
-  version: 5,
+  version: 7,
   date: { day: 12, month: 8, year: 2026 },
   timeMinutes: 8 * 60,
   birthday: { day: 12, month: 8 },
@@ -69,6 +69,8 @@ const START = {
     longTermHealth: 92,
     loneliness: 10,
     lifeStress: 5,
+    creditTrust: 48,
+    financialDiscipline: 50,
   },
 
   jobId: null,
@@ -76,6 +78,9 @@ const START = {
   workDaysMonth: 0,
   yearsExperience: 0,
   careerMonths: 0,
+
+  familyMealsToday: 0,
+  sideGigDoneToday: {},
 
   phoneId: 'samsung_s3',
   phoneCondition: 55,
@@ -86,6 +91,16 @@ const START = {
   businesses: [],
   investments: 0,
 
+  debts: [],
+  borrowingHistory: {
+    bankLoansClosed: 0,
+    microLoansClosed: 0,
+    socialLoansClosed: 0,
+    latePayments: 0,
+    defaults: 0,
+    totalInterestPaid: 0,
+  },
+
   monthly: {
     salary: 0,
     business: 0,
@@ -95,6 +110,10 @@ const START = {
     transport: 0,
     healthcare: 0,
     purchases: 0,
+    debtPayments: 0,
+    interest: 0,
+    sideGigs: 0,
+    familySupport: 0,
   },
 
   stats: {
@@ -105,6 +124,8 @@ const START = {
     eventsSeen: 0,
     goodDeeds: 0,
     missedFamilyEvents: 0,
+    sideGigEarned: 0,
+    familySupportValue: 0,
   },
 
   relatives: {
@@ -194,6 +215,91 @@ const JOBS = [
   },
 ];
 
+
+const SIDE_GIGS = [
+  {
+    id: 'flyers',
+    name: 'Раздача листовок',
+    company: 'Промо-агентство',
+    pay: 350,
+    hours: 2,
+    energy: 12,
+    fatigue: 9,
+    stress: 2,
+    satiety: 5,
+    req: () => true,
+    note: 'Простая подработка без требований.',
+  },
+  {
+    id: 'loader',
+    name: 'Помощь на складе',
+    company: 'Склад',
+    pay: 750,
+    hours: 4,
+    energy: 30,
+    fatigue: 27,
+    stress: 4,
+    satiety: 10,
+    req: (game) => game.fitness >= 30,
+    note: 'Тяжёлая физическая работа. Нужна нормальная форма.',
+  },
+  {
+    id: 'delivery',
+    name: 'Вечерняя доставка',
+    company: 'Доставка',
+    pay: 950,
+    hours: 4,
+    energy: 24,
+    fatigue: 19,
+    stress: 5,
+    satiety: 9,
+    req: (game) => !!game.phoneId,
+    note: 'Нужен работающий смартфон.',
+  },
+  {
+    id: 'event_helper',
+    name: 'Помощник на мероприятии',
+    company: 'Event Staff',
+    pay: 1250,
+    hours: 5,
+    energy: 23,
+    fatigue: 20,
+    stress: 7,
+    satiety: 10,
+    req: (game) => game.charisma >= 10,
+    note: 'Нужна базовая коммуникабельность.',
+  },
+  {
+    id: 'freelance',
+    name: 'Небольшой фриланс-заказ',
+    company: 'Онлайн-заказ',
+    pay: 1600,
+    hours: 4,
+    energy: 18,
+    fatigue: 14,
+    stress: 8,
+    satiety: 7,
+    req: (game) => !!game.phoneId && game.intelligence >= 18,
+    note: 'Нужны смартфон и развитый интеллект.',
+  },
+  {
+    id: 'taxi',
+    name: 'Подработка в такси',
+    company: 'Такси',
+    pay: 2200,
+    hours: 6,
+    energy: 21,
+    fatigue: 22,
+    stress: 10,
+    satiety: 11,
+    req: (game) => {
+      const owned = game.cars.find(c => c.uid === game.activeCarId);
+      return !!owned && owned.condition >= 45;
+    },
+    note: 'Нужен выбранный автомобиль в исправном состоянии.',
+  },
+];
+
 const PHONES = [
   { id: 'nokia_6300', brand: 'Nokia', model: '6300', year: 2007, price: 900, performance: 5, camera: 2, prestige: 1, monthly: 80 },
   { id: 'samsung_s3', brand: 'Samsung', model: 'Galaxy S III', year: 2012, price: 1800, performance: 10, camera: 9, prestige: 2, monthly: 100 },
@@ -224,6 +330,7 @@ const CARS = [
 ];
 
 const HOUSING = [
+  { id: 'homeless', name: 'Без постоянного жилья', type: 'special', price: 0, monthly: 0, comfort: 5, healthBonus: -4, prestige: 0 },
   { id: 'parents', name: 'Жить с родителями', type: 'rent', price: 0, monthly: 2500, comfort: 35, healthBonus: 0, prestige: 0 },
   { id: 'room', name: 'Комната в квартире', type: 'rent', price: 0, monthly: 6500, comfort: 42, healthBonus: 0, prestige: 2 },
   { id: 'studio_rent', name: 'Студия в аренду', type: 'rent', price: 0, monthly: 14500, comfort: 60, healthBonus: 1, prestige: 7 },
@@ -302,6 +409,11 @@ function deepMerge(base, saved) {
   out.stats = { ...base.stats, ...(saved.stats || {}) };
   out.relatives = { ...base.relatives, ...(saved.relatives || {}) };
   out.people = { ...base.people, ...(saved.people || {}) };
+  out.borrowingHistory = { ...base.borrowingHistory, ...(saved.borrowingHistory || {}) };
+  out.familyMealsToday = saved.familyMealsToday || 0;
+  out.sideGigDoneToday = { ...(saved.sideGigDoneToday || {}) };
+  out.properties = (saved.properties || []).map(p => ({ condition: 100, ...p }));
+  out.businesses = (saved.businesses || []).map(b => ({ condition: 100, ...b }));
   return out;
 }
 
@@ -335,8 +447,112 @@ function nextDate(date) {
   return { day, month, year };
 }
 
+function dateSerial(date) {
+  return Math.floor(Date.UTC(date.year, date.month - 1, date.day) / 86400000);
+}
+
+function addDays(date, days) {
+  const d = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return {
+    day: d.getUTCDate(),
+    month: d.getUTCMonth() + 1,
+    year: d.getUTCFullYear(),
+  };
+}
+
+function daysUntil(from, to) {
+  return dateSerial(to) - dateSerial(from);
+}
+
+function debtOutstanding(debt) {
+  return Math.max(0, Math.round((debt.principalRemaining || 0) + (debt.accruedInterest || 0) + (debt.penalties || 0)));
+}
+
+function creditLabel(game) {
+  const score = game.hidden.creditTrust;
+  if (game.borrowingHistory.defaults > 0 || score < 30) return 'Плохая';
+  if (score < 48) return 'Слабая';
+  if (score < 64) return 'Нормальная';
+  if (score < 78) return 'Хорошая';
+  return 'Отличная';
+}
+
+function activeDebtTotal(game) {
+  return game.debts
+    .filter(d => d.status === 'active')
+    .reduce((sum, d) => sum + debtOutstanding(d), 0);
+}
+
+function bankMonthlyLoad(game) {
+  return game.debts
+    .filter(d => d.status === 'active' && d.type === 'bank')
+    .reduce((sum, d) => sum + (d.monthlyPayment || 0), 0);
+}
+
+function estimateStableIncome(game, currentJob) {
+  const salary = currentJob?.salary || 0;
+  const business = game.businesses.reduce((sum, b) => sum + Math.max(0, b.lastMonthProfit || 0), 0);
+  return salary + business;
+}
+
+function calculateBankOffer(game, currentJob, netWorth) {
+  const income = estimateStableIncome(game, currentJob);
+  const trust = game.hidden.creditTrust;
+  const existingLoad = bankMonthlyLoad(game);
+  const debtRatio = income > 0 ? existingLoad / income : 1;
+
+  if (income < 12000 && netWorth < 250000) {
+    return { approved: false, limit: 0, apr: 0, reason: 'Нет подтверждённого стабильного дохода.' };
+  }
+
+  if (trust < 25 || game.borrowingHistory.defaults >= 2) {
+    return { approved: false, limit: 0, apr: 0, reason: 'Банк не готов кредитовать из-за плохой платёжной истории.' };
+  }
+
+  if (debtRatio > 0.48) {
+    return { approved: false, limit: 0, apr: 0, reason: 'Слишком большая текущая долговая нагрузка.' };
+  }
+
+  const multiplier = 1.2 + trust / 22;
+  const assetBoost = Math.min(netWorth * 0.08, 250000);
+  const grossLimit = income * multiplier + assetBoost;
+  const existingDebt = game.debts
+    .filter(d => d.status === 'active' && d.type === 'bank')
+    .reduce((sum, d) => sum + debtOutstanding(d), 0);
+
+  const limit = Math.max(0, Math.min(1500000, Math.round(grossLimit - existingDebt)));
+  const apr = Math.max(15.5, Math.min(41, Number((37 - trust * 0.22).toFixed(1))));
+
+  return {
+    approved: limit >= 5000,
+    limit,
+    apr,
+    reason: limit >= 5000 ? null : 'Доступный лимит сейчас слишком мал.',
+  };
+}
+
+function calculateMicroOffer(game) {
+  const trust = game.hidden.creditTrust;
+  const existing = game.debts.some(d => d.status === 'active' && d.type === 'micro');
+  if (existing) {
+    return { approved: false, limit: 0, dailyRate: 0, reason: 'Сначала нужно закрыть текущий микрозайм.' };
+  }
+
+  const limit = Math.max(3000, Math.min(30000, Math.round(3500 + trust * 220)));
+  const dailyRate = Math.max(0.0035, Math.min(0.009, 0.0092 - trust * 0.000055));
+
+  return { approved: true, limit, dailyRate, reason: null };
+}
+
+function annuityPayment(principal, apr, months) {
+  const r = apr / 100 / 12;
+  if (r <= 0) return principal / months;
+  return principal * r / (1 - Math.pow(1 + r, -months));
+}
+
 function getPhone(id) {
-  return PHONES.find(x => x.id === id) || PHONES[0];
+  if (!id) return null;
+  return PHONES.find(x => x.id === id) || null;
 }
 
 function getHousing(id) {
@@ -401,13 +617,15 @@ function Game() {
     }, 0);
     const props = game.properties.reduce((s, p) => {
       const base = HOUSING.find(x => x.id === p.catalogId);
-      return s + (base ? base.price : 0);
+      return s + (base ? base.price * ((p.condition ?? 100) / 100) * 0.85 : 0);
     }, 0);
     const biz = game.businesses.reduce((s, b) => {
       const base = BUSINESS_CATALOG.find(x => x.id === b.catalogId);
-      return s + (base ? base.price : 0);
+      return s + (base ? base.price * ((b.condition ?? 100) / 100) * 0.72 : 0);
     }, 0);
-    return Math.round(game.cash + game.bank + cars + props + biz + game.investments + currentPhone.price * game.phoneCondition / 100 * 0.3);
+    const debts = game.debts.reduce((sum, debt) => sum + debtOutstanding(debt), 0);
+    const phoneValue = currentPhone ? currentPhone.price * game.phoneCondition / 100 * 0.55 : 0;
+    return Math.round(game.cash + game.bank + cars + props + biz + game.investments + phoneValue - debts);
   }, [game, currentPhone]);
 
   const patch = (updater) => {
@@ -435,6 +653,97 @@ function Game() {
     return result;
   };
 
+  const processDailyDebts = (g) => {
+    let cash = g.cash;
+    let stress = g.stress;
+    let mood = g.mood;
+    let creditTrust = g.hidden.creditTrust;
+    let reliability = g.hidden.reliability;
+    let socialTrust = g.hidden.socialTrust;
+    let familyBond = g.hidden.familyBond;
+    let history = { ...g.borrowingHistory };
+    let relatives = { ...g.relatives };
+    const todaySerial = dateSerial(g.date);
+
+    const debts = g.debts.map(debt => {
+      if (debt.status !== 'active') return debt;
+
+      let d = { ...debt };
+      const principal = Math.max(0, d.principalRemaining || 0);
+
+      if (d.type === 'bank') {
+        d.accruedInterest = (d.accruedInterest || 0) + principal * ((d.apr || 0) / 100 / 365);
+      }
+
+      if (d.type === 'micro') {
+        d.accruedInterest = (d.accruedInterest || 0) + principal * (d.dailyRate || 0);
+
+        const lateDays = Math.max(0, todaySerial - dateSerial(d.dueDate));
+        if (lateDays > 0) {
+          d.penalties = (d.penalties || 0) + principal * (d.overdueDailyPenalty || 0.004);
+          creditTrust = clamp(creditTrust - 0.35);
+          stress = clamp(stress + 0.35);
+
+          if (lateDays % 7 === 1) {
+            history.latePayments += 1;
+            d.lateMarks = (d.lateMarks || 0) + 1;
+          }
+        }
+
+        if (todaySerial >= dateSerial(d.dueDate) && cash >= debtOutstanding(d)) {
+          const total = debtOutstanding(d);
+          cash -= total;
+          history.microLoansClosed += 1;
+          history.totalInterestPaid += Math.max(0, total - (d.originalPrincipal || 0));
+          creditTrust = clamp(creditTrust + 2);
+          d = { ...d, principalRemaining: 0, accruedInterest: 0, penalties: 0, status: 'closed', closedAt: g.date };
+        }
+      }
+
+      if (d.type === 'social') {
+        const lateDays = Math.max(0, todaySerial - dateSerial(d.dueDate));
+        if (lateDays > 0 && lateDays % 7 === 1) {
+          reliability = clamp(reliability - 3);
+          socialTrust = clamp(socialTrust - 2);
+          stress = clamp(stress + 1.5);
+          history.latePayments += 1;
+
+          if (d.lenderKey === 'mother') {
+            familyBond = clamp(familyBond - 3);
+            relatives.mother = {
+              ...relatives.mother,
+              relationship: clamp(relatives.mother.relationship - 4),
+            };
+          }
+          if (d.lenderKind === 'coworker') {
+            creditTrust = clamp(creditTrust - 0.5);
+          }
+
+          d.lateMarks = (d.lateMarks || 0) + 1;
+        }
+      }
+
+      return d;
+    });
+
+    return {
+      ...g,
+      cash,
+      stress,
+      mood,
+      debts,
+      borrowingHistory: history,
+      relatives,
+      hidden: {
+        ...g.hidden,
+        creditTrust,
+        reliability,
+        socialTrust,
+        familyBond,
+      },
+    };
+  };
+
   const processNewDay = (g) => {
     const oldDate = g.date;
     const nd = nextDate(oldDate);
@@ -459,6 +768,8 @@ function Game() {
       date: nd,
       age,
       workedToday: false,
+      familyMealsToday: 0,
+      sideGigDoneToday: {},
       stats: { ...g.stats, daysLived: g.stats.daysLived + 1 },
       health: clamp(g.health + healthDelta),
       hidden: {
@@ -467,7 +778,7 @@ function Game() {
         lifeStress: clamp(g.hidden.lifeStress + Math.max(0, g.stress - 55) * 0.004),
         burnout: clamp(g.hidden.burnout + (g.stress > 70 ? 0.15 : -0.05)),
       },
-      phoneCondition: clamp(g.phoneCondition - 0.012),
+      phoneCondition: g.phoneId ? clamp(g.phoneCondition - 0.012) : 0,
     };
 
     if (car) {
@@ -476,6 +787,11 @@ function Game() {
         : x
       );
     }
+
+    ng.properties = ng.properties.map(p => ({
+      ...p,
+      condition: clamp((p.condition ?? 100) - 0.004, 35, 100),
+    }));
 
     for (const key of Object.keys(ng.relatives)) {
       const r = ng.relatives[key];
@@ -489,6 +805,7 @@ function Game() {
       ng = processMonth(ng);
     }
 
+    ng = processDailyDebts(ng);
     ng = maybeDeath(ng);
     if (ng.alive) ng = maybeGenerateEvent(ng);
     return ng;
@@ -515,29 +832,110 @@ function Game() {
       const gross = base.baseDaily * 30 * (0.85 + Math.random() * 0.3);
       const net = Math.round(gross * (1 - base.expenses));
       businessIncome += net;
-      return { ...b, lastMonthProfit: net };
+      const condition = clamp((b.condition ?? 100) + (net >= 0 ? 0.15 : -0.5), 30, 100);
+      return { ...b, lastMonthProfit: net, condition };
     });
     income += businessIncome;
 
     const investmentReturn = Math.round(g.investments * ((Math.random() * 0.06) - 0.02));
     income += investmentReturn;
 
-    expenses += housing.monthly;
-    expenses += getPhone(g.phoneId).monthly;
+    const livingWithParents = g.housingId === 'parents' && g.relatives.mother.alive;
+    const housingCost = livingWithParents
+      ? (job ? Math.min(housing.monthly, 2500) : 0)
+      : housing.monthly;
+    expenses += housingCost;
+
+    const phone = getPhone(g.phoneId);
+    expenses += phone ? phone.monthly : 0;
 
     for (const owned of g.cars) {
       const base = CARS.find(x => x.id === owned.catalogId);
       if (base) expenses += base.monthly;
     }
 
-    const food = 7500;
+    const food = livingWithParents
+      ? (job ? 1500 : 0)
+      : 4500;
+    const familySupport = livingWithParents
+      ? Math.max(0, 6500 - food - housingCost)
+      : 0;
     expenses += food;
 
-    const balance = income - expenses;
+    let cashAfter = g.cash + income - expenses;
+    let debtPayments = 0;
+    let interestPaid = 0;
+    let creditTrust = g.hidden.creditTrust;
+    let stress = g.stress;
+    let history = { ...g.borrowingHistory };
+
+    const debts = g.debts.map(debt => {
+      if (debt.status !== 'active' || debt.type !== 'bank') return debt;
+
+      let d = { ...debt };
+      const due = Math.min(debtOutstanding(d), d.monthlyPayment || debtOutstanding(d));
+      const available = Math.max(0, cashAfter);
+      const paid = Math.min(available, due);
+
+      if (paid > 0) {
+        cashAfter -= paid;
+        debtPayments += paid;
+
+        let rest = paid;
+        const penaltyPart = Math.min(rest, d.penalties || 0);
+        d.penalties = Math.max(0, (d.penalties || 0) - penaltyPart);
+        rest -= penaltyPart;
+
+        const interestPart = Math.min(rest, d.accruedInterest || 0);
+        d.accruedInterest = Math.max(0, (d.accruedInterest || 0) - interestPart);
+        rest -= interestPart;
+        interestPaid += interestPart;
+
+        d.principalRemaining = Math.max(0, (d.principalRemaining || 0) - rest);
+      }
+
+      if (paid + 1 < due) {
+        const missed = due - paid;
+        d.penalties = (d.penalties || 0) + missed * 0.03;
+        d.lateMarks = (d.lateMarks || 0) + 1;
+        history.latePayments += 1;
+        creditTrust = clamp(creditTrust - 5);
+        stress = clamp(stress + 5);
+      } else {
+        creditTrust = clamp(creditTrust + 0.8);
+      }
+
+      if (debtOutstanding(d) <= 1) {
+        history.bankLoansClosed += 1;
+        d = {
+          ...d,
+          principalRemaining: 0,
+          accruedInterest: 0,
+          penalties: 0,
+          status: 'closed',
+          closedAt: g.date,
+        };
+      }
+
+      return d;
+    });
+
+    history.totalInterestPaid += interestPaid;
 
     return {
       ...g,
-      cash: g.cash + balance,
+      cash: cashAfter,
+      debts,
+      borrowingHistory: history,
+      stress,
+      hidden: {
+        ...g.hidden,
+        creditTrust,
+        financialDiscipline: clamp(
+          g.hidden.financialDiscipline +
+            (history.latePayments > g.borrowingHistory.latePayments ? -3 : (debtPayments > 0 ? 0.5 : 0))
+        ),
+      },
       workDaysMonth: 0,
       businesses,
       careerMonths: job ? g.careerMonths + 1 : g.careerMonths,
@@ -546,19 +944,24 @@ function Game() {
         salary: job ? income - businessIncome - investmentReturn : 0,
         business: businessIncome,
         investments: investmentReturn,
-        housing: housing.monthly,
+        housing: housingCost,
         food,
+        familySupport,
         transport: g.cars.reduce((s, owned) => {
           const base = CARS.find(x => x.id === owned.catalogId);
           return s + (base?.monthly || 0);
         }, 0),
         healthcare: 0,
         purchases: 0,
+        debtPayments,
+        interest: interestPaid,
+        sideGigs: g.monthly.sideGigs || 0,
       },
       stats: {
         ...g.stats,
         totalEarned: g.stats.totalEarned + Math.max(0, income),
-        totalSpent: g.stats.totalSpent + expenses,
+        totalSpent: g.stats.totalSpent + expenses + debtPayments,
+        familySupportValue: g.stats.familySupportValue + familySupport,
       },
     };
   };
@@ -675,6 +1078,98 @@ function Game() {
     }, o.mins));
   };
 
+
+  const eatAtHome = () => {
+    const mother = game.relatives.mother;
+    if (game.housingId !== 'parents' || !mother?.alive) {
+      return Alert.alert('Домашняя еда', 'Сейчас ты не живёшь с мамой.');
+    }
+
+    const relation = mother.relationship || 0;
+    const limit = relation >= 75 ? 3 : relation >= 50 ? 2 : relation >= 25 ? 1 : 0;
+
+    if (limit <= 0) {
+      return Alert.alert('Домашняя еда', 'Отношения дома слишком напряжённые. На постоянную поддержку сейчас рассчитывать не получается.');
+    }
+
+    if (game.familyMealsToday >= limit) {
+      return Alert.alert('Домашняя еда', 'Сегодня семья уже достаточно помогла с питанием.');
+    }
+
+    patch(g => advanceMinutes({
+      ...g,
+      familyMealsToday: g.familyMealsToday + 1,
+      satiety: clamp(g.satiety + 48),
+      energy: clamp(g.energy + 2),
+      mood: clamp(g.mood + 3),
+      stress: clamp(g.stress - 2),
+      relatives: {
+        ...g.relatives,
+        mother: {
+          ...g.relatives.mother,
+          relationship: clamp(g.relatives.mother.relationship + 0.12),
+        },
+      },
+      hidden: {
+        ...g.hidden,
+        familyBond: clamp(g.hidden.familyBond + 0.08),
+      },
+      stats: {
+        ...g.stats,
+        familySupportValue: g.stats.familySupportValue + 250,
+      },
+    }, 45));
+  };
+
+  const doSideGig = (gig) => {
+    if (game.sideGigDoneToday?.[gig.id]) {
+      return Alert.alert('Подработка', 'Эту подработку ты уже выполнял сегодня.');
+    }
+    if (!gig.req(game)) {
+      return Alert.alert('Подработка недоступна', gig.note);
+    }
+    if (game.energy < gig.energy || game.fatigue > 88) {
+      return Alert.alert('Слишком устал', 'Сейчас на эту подработку не хватает сил.');
+    }
+
+    const completedToday = Object.values(game.sideGigDoneToday || {}).filter(Boolean).length;
+    if (completedToday >= 2) {
+      return Alert.alert('Подработки', 'Сегодня ты уже взял две подработки. Организму нужен отдых.');
+    }
+
+    patch(g => advanceMinutes({
+      ...g,
+      cash: g.cash + gig.pay,
+      energy: clamp(g.energy - gig.energy),
+      fatigue: clamp(g.fatigue + gig.fatigue),
+      stress: clamp(g.stress + gig.stress),
+      satiety: clamp(g.satiety - gig.satiety),
+      mood: clamp(g.mood + 1),
+      sideGigDoneToday: { ...(g.sideGigDoneToday || {}), [gig.id]: true },
+      monthly: {
+        ...g.monthly,
+        sideGigs: (g.monthly.sideGigs || 0) + gig.pay,
+      },
+      stats: {
+        ...g.stats,
+        totalEarned: g.stats.totalEarned + gig.pay,
+        sideGigEarned: g.stats.sideGigEarned + gig.pay,
+      },
+      hidden: {
+        ...g.hidden,
+        reliability: clamp(g.hidden.reliability + 0.08),
+      },
+      memories: [
+        ...g.memories,
+        {
+          date: formatDate(g.date),
+          age: g.age,
+          text: `Подработал: ${gig.name} и получил ${money(gig.pay)} ₴`,
+        },
+      ].slice(-80),
+    }, gig.hours * 60));
+  };
+
   const workout = () => {
     if (game.energy < 22 || game.fatigue > 82) return Alert.alert('Тренировка', 'Сейчас организму нужен отдых.');
     patch(g => advanceMinutes({
@@ -746,21 +1241,34 @@ function Game() {
 
   const buyPhone = (p) => {
     if (game.cash < p.price) return Alert.alert('Недостаточно денег');
+    const old = getPhone(game.phoneId);
+    const oldValue = old
+      ? Math.max(50, Math.round(old.price * (0.25 + 0.45 * (clamp(game.phoneCondition) / 100))))
+      : 0;
+
     Alert.alert(
       `${p.brand} ${p.model}`,
-      `Купить за ${money(p.price)} ₴?`,
+      old
+        ? `Купить за ${money(p.price)} ₴?
+
+Текущий ${old.brand} ${old.model} останется у тебя только если сначала продать его вручную. При прямой замене старый телефон будет сдан в trade-in за ${money(oldValue)} ₴.`
+        : `Купить за ${money(p.price)} ₴?`,
       [
         { text: 'Отмена', style: 'cancel' },
         {
-          text: 'Купить',
+          text: old ? 'Купить с trade-in' : 'Купить',
           onPress: () => patch(g => ({
             ...g,
-            cash: g.cash - p.price,
+            cash: g.cash - p.price + oldValue,
             phoneId: p.id,
             phoneCondition: 100,
             mood: clamp(g.mood + Math.min(8, p.prestige / 15)),
-            monthly: { ...g.monthly, purchases: g.monthly.purchases + p.price },
-            stats: { ...g.stats, totalSpent: g.stats.totalSpent + p.price },
+            monthly: { ...g.monthly, purchases: g.monthly.purchases + Math.max(0, p.price - oldValue) },
+            stats: {
+              ...g.stats,
+              totalSpent: g.stats.totalSpent + p.price,
+              totalEarned: g.stats.totalEarned + oldValue,
+            },
           })),
         },
       ]
@@ -831,7 +1339,7 @@ function Game() {
           ...g,
           cash: g.cash - h.price,
           housingId: h.id,
-          properties: [...g.properties, { catalogId: h.id, boughtAt: g.date }],
+          properties: [...g.properties, { catalogId: h.id, boughtAt: g.date, condition: 100 }],
           stats: { ...g.stats, totalSpent: g.stats.totalSpent + h.price },
         })),
       },
@@ -843,14 +1351,437 @@ function Game() {
     patch(g => ({
       ...g,
       cash: g.cash - b.price,
-      businesses: [...g.businesses, { uid: `${b.id}_${Date.now()}`, catalogId: b.id, lastMonthProfit: 0 }],
+      businesses: [...g.businesses, { uid: `${b.id}_${Date.now()}`, catalogId: b.id, lastMonthProfit: 0, condition: 100 }],
       stats: { ...g.stats, totalSpent: g.stats.totalSpent + b.price },
     }));
+  };
+
+
+  const sellPhone = () => {
+    const phone = getPhone(game.phoneId);
+    if (!phone) return Alert.alert('Телефон', 'У тебя нет телефона для продажи.');
+
+    const condition = clamp(game.phoneCondition);
+    const price = Math.max(50, Math.round(phone.price * (0.25 + 0.45 * (condition / 100))));
+
+    Alert.alert(
+      'Продать телефон?',
+      `${phone.brand} ${phone.model}\nСостояние: ${Math.round(condition)}%\nЦена выкупа: ${money(price)} ₴\n\nПосле продажи ты останешься без телефона. Некоторые подработки и возможности станут недоступны.`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Продать',
+          style: 'destructive',
+          onPress: () => patch(g => ({
+            ...g,
+            cash: g.cash + price,
+            phoneId: null,
+            phoneCondition: 0,
+            stats: { ...g.stats, totalEarned: g.stats.totalEarned + price },
+            memories: [...g.memories, {
+              date: formatDate(g.date),
+              age: g.age,
+              text: `Продал ${phone.brand} ${phone.model} за ${money(price)} ₴`,
+            }].slice(-80),
+          })),
+        },
+      ]
+    );
+  };
+
+  const sellProperty = (owned, index) => {
+    const base = HOUSING.find(x => x.id === owned.catalogId);
+    if (!base || base.type !== 'buy') return;
+
+    const condition = clamp(owned.condition ?? 100);
+    const price = Math.round(base.price * (0.55 + 0.35 * (condition / 100)));
+    const isCurrent = game.housingId === owned.catalogId;
+
+    Alert.alert(
+      'Продать недвижимость?',
+      `${base.name}\nСостояние: ${Math.round(condition)}%\nОценка продажи: ${money(price)} ₴${isCurrent ? '\n\nЭто твоё текущее жильё. После продажи придётся переехать.' : ''}`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Продать',
+          style: 'destructive',
+          onPress: () => patch(g => {
+            const canReturnHome =
+              g.relatives.mother?.alive &&
+              (g.relatives.mother.relationship || 0) >= 20;
+
+            const nextHousing = isCurrent
+              ? (canReturnHome ? 'parents' : 'homeless')
+              : g.housingId;
+
+            return {
+              ...g,
+              cash: g.cash + price,
+              housingId: nextHousing,
+              properties: g.properties.filter((_, i) => i !== index),
+              stress: clamp(g.stress + (isCurrent ? (canReturnHome ? 3 : 12) : 0)),
+              stats: { ...g.stats, totalEarned: g.stats.totalEarned + price },
+              memories: [...g.memories, {
+                date: formatDate(g.date),
+                age: g.age,
+                text: `Продал недвижимость «${base.name}» за ${money(price)} ₴`,
+              }].slice(-80),
+            };
+          }),
+        },
+      ]
+    );
+  };
+
+  const sellBusiness = (owned) => {
+    const base = BUSINESS_CATALOG.find(x => x.id === owned.catalogId);
+    if (!base) return;
+    const condition = clamp(owned.condition ?? 100);
+    const profitFactor = owned.lastMonthProfit > 0 ? 0.08 : -0.06;
+    const price = Math.max(
+      Math.round(base.price * 0.35),
+      Math.round(base.price * (0.45 + 0.30 * condition / 100 + profitFactor))
+    );
+
+    Alert.alert(
+      'Продать бизнес?',
+      `${base.name}\nСостояние: ${Math.round(condition)}%\nПоследняя прибыль: ${money(owned.lastMonthProfit || 0)} ₴\nОценка продажи: ${money(price)} ₴`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Продать',
+          style: 'destructive',
+          onPress: () => patch(g => ({
+            ...g,
+            cash: g.cash + price,
+            businesses: g.businesses.filter(x => x.uid !== owned.uid),
+            stats: { ...g.stats, totalEarned: g.stats.totalEarned + price },
+            memories: [...g.memories, {
+              date: formatDate(g.date),
+              age: g.age,
+              text: `Продал бизнес «${base.name}» за ${money(price)} ₴`,
+            }].slice(-80),
+          })),
+        },
+      ]
+    );
   };
 
   const invest = (amount) => {
     if (game.cash < amount) return Alert.alert('Недостаточно денег');
     patch(g => ({ ...g, cash: g.cash - amount, investments: g.investments + amount }));
+  };
+
+  const borrowFromPerson = (lenderKey, amount) => {
+    const activeSame = game.debts.some(d => d.status === 'active' && d.type === 'social' && d.lenderKey === lenderKey);
+    if (activeSame) return Alert.alert('Долг уже есть', 'Сначала верни предыдущие деньги этому человеку.');
+
+    let lenderName = 'Знакомый';
+    let lenderKind = 'friend';
+    let maxAmount = 0;
+    let dueDays = 30;
+
+    if (lenderKey === 'mother') {
+      if (game.housingId !== 'parents' || !game.relatives.mother.alive) {
+        return Alert.alert('Недоступно', 'Сейчас попросить деньги у мамы таким способом нельзя.');
+      }
+      lenderName = 'Мама';
+      lenderKind = 'family';
+      dueDays = 45;
+      maxAmount = Math.round(
+        1000 +
+        game.relatives.mother.relationship * 70 +
+        game.hidden.familyBond * 35 -
+        game.borrowingHistory.latePayments * 450
+      );
+    } else if (lenderKey === 'father') {
+      if (game.housingId !== 'parents' || !game.relatives.father.alive) {
+        return Alert.alert('Недоступно', 'Сейчас попросить деньги у отца таким способом нельзя.');
+      }
+      lenderName = 'Отец';
+      lenderKind = 'family';
+      dueDays = 45;
+      maxAmount = Math.round(
+        1000 +
+        game.relatives.father.relationship * 65 +
+        game.hidden.familyBond * 30 -
+        game.borrowingHistory.latePayments * 450
+      );
+    } else if (lenderKey === 'coworker') {
+      if (!game.jobId || game.hidden.careerTrust < 42) {
+        return Alert.alert('Недоступно', 'У тебя пока нет коллеги, готового одолжить деньги.');
+      }
+      lenderName = 'Коллега';
+      lenderKind = 'coworker';
+      dueDays = 30;
+      maxAmount = Math.round(1500 + game.hidden.careerTrust * 95 + game.hidden.reliability * 35);
+    } else {
+      if (game.hidden.socialTrust < 55) {
+        return Alert.alert('Недоступно', 'Пока среди знакомых нет человека, готового дать деньги в долг.');
+      }
+      lenderName = 'Знакомый';
+      lenderKind = 'friend';
+      dueDays = 35;
+      maxAmount = Math.round(1000 + game.hidden.socialTrust * 100 + game.hidden.reliability * 35);
+    }
+
+    maxAmount = Math.max(0, Math.min(maxAmount, 30000));
+    if (amount > maxAmount) {
+      return Alert.alert('Слишком большая просьба', `${lenderName} сейчас готов одолжить не больше ${money(maxAmount)} ₴.`);
+    }
+
+    const ratio = maxAmount > 0 ? amount / maxAmount : 1;
+    let approvalChance =
+      lenderKind === 'family' ? 0.92 :
+      lenderKind === 'coworker' ? 0.70 :
+      0.66;
+
+    approvalChance -= ratio * 0.16;
+    approvalChance += (game.hidden.reliability - 50) * 0.003;
+    approvalChance = Math.max(0.25, Math.min(0.98, approvalChance));
+
+    if (Math.random() > approvalChance) {
+      patch(g => ({
+        ...g,
+        stress: clamp(g.stress + 1),
+        memories: [
+          ...g.memories,
+          {
+            date: formatDate(g.date),
+            age: g.age,
+            text: `${lenderName} отказался одолжить ${money(amount)} ₴`,
+          },
+        ].slice(-80),
+      }));
+      return Alert.alert('Не получилось', `${lenderName} сейчас не готов одолжить эту сумму.`);
+    }
+
+    const dueDate = addDays(game.date, dueDays);
+    patch(g => ({
+      ...g,
+      cash: g.cash + amount,
+      stress: clamp(g.stress - 1),
+      debts: [
+        ...g.debts,
+        {
+          uid: `social_${lenderKey}_${Date.now()}`,
+          type: 'social',
+          lenderKey,
+          lenderKind,
+          lenderName,
+          originalPrincipal: amount,
+          principalRemaining: amount,
+          accruedInterest: 0,
+          penalties: 0,
+          status: 'active',
+          createdAt: g.date,
+          dueDate,
+          lateMarks: 0,
+        },
+      ],
+      memories: [
+        ...g.memories,
+        {
+          date: formatDate(g.date),
+          age: g.age,
+          text: `Одолжил ${money(amount)} ₴ у: ${lenderName}`,
+        },
+      ].slice(-80),
+    }));
+  };
+
+  const takeBankLoan = (amount, months) => {
+    const offer = calculateBankOffer(game, currentJob, netWorth);
+    if (!offer.approved) return Alert.alert('Банк отказал', offer.reason || 'Кредит сейчас недоступен.');
+    if (amount > offer.limit) {
+      return Alert.alert('Сумма недоступна', `Банк готов выдать максимум ${money(offer.limit)} ₴.`);
+    }
+
+    const monthlyPayment = Math.round(annuityPayment(amount, offer.apr, months));
+    const stableIncome = estimateStableIncome(game, currentJob);
+    if (stableIncome > 0 && bankMonthlyLoad(game) + monthlyPayment > stableIncome * 0.48) {
+      return Alert.alert('Высокая долговая нагрузка', 'Банк считает, что новый платёж будет слишком большим для текущего дохода.');
+    }
+
+    Alert.alert(
+      'Потребительский кредит',
+      `${money(amount)} ₴ на ${months} мес.
+Ставка: ${offer.apr}% годовых
+Платёж: около ${money(monthlyPayment)} ₴ / месяц`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Получить',
+          onPress: () => patch(g => ({
+            ...g,
+            cash: g.cash + amount,
+            debts: [
+              ...g.debts,
+              {
+                uid: `bank_${Date.now()}`,
+                type: 'bank',
+                lenderName: 'Банк',
+                originalPrincipal: amount,
+                principalRemaining: amount,
+                accruedInterest: 0,
+                penalties: 0,
+                apr: offer.apr,
+                termMonths: months,
+                monthlyPayment,
+                status: 'active',
+                createdAt: g.date,
+                lateMarks: 0,
+              },
+            ],
+            memories: [
+              ...g.memories,
+              { date: formatDate(g.date), age: g.age, text: `Оформил банковский кредит на ${money(amount)} ₴` },
+            ].slice(-80),
+          })),
+        },
+      ]
+    );
+  };
+
+  const takeMicroloan = (amount, termDays) => {
+    const offer = calculateMicroOffer(game);
+    if (!offer.approved) return Alert.alert('Микрозайм недоступен', offer.reason || 'Попробуй позже.');
+    if (amount > offer.limit) {
+      return Alert.alert('Сумма недоступна', `Доступно не больше ${money(offer.limit)} ₴.`);
+    }
+
+    const expectedInterest = Math.round(amount * offer.dailyRate * termDays);
+    const expectedTotal = amount + expectedInterest;
+    const dueDate = addDays(game.date, termDays);
+
+    Alert.alert(
+      'Микрозайм',
+      `${money(amount)} ₴ на ${termDays} дней
+Ставка: ${(offer.dailyRate * 100).toFixed(2)}% в день
+Если погасить вовремя: примерно ${money(expectedTotal)} ₴
+Просрочка быстро увеличивает долг.`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Взять деньги',
+          style: 'destructive',
+          onPress: () => patch(g => ({
+            ...g,
+            cash: g.cash + amount,
+            stress: clamp(g.stress + 2),
+            debts: [
+              ...g.debts,
+              {
+                uid: `micro_${Date.now()}`,
+                type: 'micro',
+                lenderName: 'Микрофинансовая организация',
+                originalPrincipal: amount,
+                principalRemaining: amount,
+                accruedInterest: 0,
+                penalties: 0,
+                dailyRate: offer.dailyRate,
+                overdueDailyPenalty: 0.004,
+                status: 'active',
+                createdAt: g.date,
+                dueDate,
+                lateMarks: 0,
+              },
+            ],
+            memories: [
+              ...g.memories,
+              { date: formatDate(g.date), age: g.age, text: `Взял микрозайм на ${money(amount)} ₴` },
+            ].slice(-80),
+          })),
+        },
+      ]
+    );
+  };
+
+  const repayDebt = (debt, amount = null) => {
+    const total = debtOutstanding(debt);
+    if (total <= 0) return;
+    const pay = Math.min(total, amount || total);
+    if (game.cash < pay) return Alert.alert('Недостаточно денег', `Для платежа нужно ${money(pay)} ₴.`);
+
+    patch(g => {
+      let history = { ...g.borrowingHistory };
+      let hidden = { ...g.hidden };
+      let relatives = { ...g.relatives };
+      let closed = false;
+      let interestPaid = 0;
+
+      const debts = g.debts.map(d => {
+        if (d.uid !== debt.uid || d.status !== 'active') return d;
+
+        let nd = { ...d };
+        let rest = pay;
+
+        const penaltyPart = Math.min(rest, nd.penalties || 0);
+        nd.penalties = Math.max(0, (nd.penalties || 0) - penaltyPart);
+        rest -= penaltyPart;
+
+        const interestPart = Math.min(rest, nd.accruedInterest || 0);
+        nd.accruedInterest = Math.max(0, (nd.accruedInterest || 0) - interestPart);
+        rest -= interestPart;
+        interestPaid += interestPart;
+
+        nd.principalRemaining = Math.max(0, (nd.principalRemaining || 0) - rest);
+
+        if (debtOutstanding(nd) <= 1) {
+          closed = true;
+          nd = { ...nd, principalRemaining: 0, accruedInterest: 0, penalties: 0, status: 'closed', closedAt: g.date };
+
+          if (nd.type === 'social') {
+            history.socialLoansClosed += 1;
+            hidden.reliability = clamp(hidden.reliability + (nd.lateMarks > 0 ? 1 : 5));
+            hidden.socialTrust = clamp(hidden.socialTrust + (nd.lateMarks > 0 ? 0 : 3));
+
+            if (nd.lenderKey === 'mother') {
+              hidden.familyBond = clamp(hidden.familyBond + (nd.lateMarks > 0 ? 1 : 4));
+              relatives.mother = {
+                ...relatives.mother,
+                relationship: clamp(relatives.mother.relationship + (nd.lateMarks > 0 ? 1 : 4)),
+              };
+            }
+            if (nd.lenderKey === 'father') {
+              hidden.familyBond = clamp(hidden.familyBond + (nd.lateMarks > 0 ? 1 : 4));
+              relatives.father = {
+                ...relatives.father,
+                relationship: clamp(relatives.father.relationship + (nd.lateMarks > 0 ? 1 : 4)),
+              };
+            }
+          } else if (nd.type === 'bank') {
+            history.bankLoansClosed += 1;
+            hidden.creditTrust = clamp(hidden.creditTrust + (nd.lateMarks > 0 ? 1 : 5));
+          } else if (nd.type === 'micro') {
+            history.microLoansClosed += 1;
+            hidden.creditTrust = clamp(hidden.creditTrust + (nd.lateMarks > 0 ? 0.5 : 2));
+          }
+        }
+
+        return nd;
+      });
+
+      history.totalInterestPaid += interestPaid;
+
+      return {
+        ...g,
+        cash: g.cash - pay,
+        debts,
+        relatives,
+        hidden,
+        borrowingHistory: history,
+        monthly: {
+          ...g.monthly,
+          debtPayments: g.monthly.debtPayments + pay,
+          interest: g.monthly.interest + interestPaid,
+        },
+        stats: { ...g.stats, totalSpent: g.stats.totalSpent + pay },
+        memories: closed
+          ? [...g.memories, { date: formatDate(g.date), age: g.age, text: `Полностью погасил долг перед ${debt.lenderName}` }].slice(-80)
+          : g.memories,
+      };
+    });
   };
 
   const resolveEvent = (choice) => {
@@ -947,6 +1878,8 @@ function Game() {
     netWorth,
     doWork,
     eat,
+    eatAtHome,
+    doSideGig,
     workout,
     study,
     sleep,
@@ -955,9 +1888,16 @@ function Game() {
     buyPhone,
     buyCar,
     sellCar,
+    sellPhone,
+    sellProperty,
+    sellBusiness,
     chooseHousing,
     buyBusiness,
     invest,
+    borrowFromPerson,
+    takeBankLoan,
+    takeMicroloan,
+    repayDebt,
     marketTab,
     setMarketTab,
     resetGame,
@@ -993,7 +1933,7 @@ function TopBar({ game }) {
   );
 }
 
-function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, doWork, eat, workout, study, sleep }) {
+function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, doWork, eat, eatAtHome, workout, study, sleep }) {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.kicker}>СЕГОДНЯ</Text>
@@ -1034,6 +1974,14 @@ function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, 
       <ActionRow title="Тренировка" subtitle="1 ч 30 мин · форма и здоровье" meta="−22 энергии" onPress={workout} />
 
       <Section title="Питание" />
+      {game.housingId === 'parents' && game.relatives.mother?.alive && (
+        <ActionRow
+          title="Поесть дома"
+          subtitle={`Мама готовит дома · использовано сегодня: ${game.familyMealsToday}`}
+          meta="Бесплатно"
+          onPress={eatAtHome}
+        />
+      )}
       <ActionRow title="Перекус" subtitle="Быстро и дёшево" meta="120 ₴" onPress={() => eat('cheap')} />
       <ActionRow title="Нормальная еда" subtitle="Сбалансированный приём пищи" meta="280 ₴" onPress={() => eat('normal')} />
       <ActionRow title="Хороший ресторан" subtitle="Лучше настроение и питание" meta="650 ₴" onPress={() => eat('good')} />
@@ -1050,7 +1998,7 @@ function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, 
 
       <Section title="Текущая жизнь" />
       <InfoCard rows={[
-        ['Телефон', `${currentPhone.brand} ${currentPhone.model}`],
+        ['Телефон', currentPhone ? `${currentPhone.brand} ${currentPhone.model}` : 'Нет телефона'],
         ['Состояние телефона', `${Math.round(game.phoneCondition)}%`],
         ['Жильё', currentHousing.name],
         ['Автомобиль', game.activeCarId ? 'Есть' : 'Нет'],
@@ -1059,7 +2007,7 @@ function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, 
   );
 }
 
-function CareerScreen({ game, currentJob, takeJob, jobAvailable }) {
+function CareerScreen({ game, currentJob, takeJob, jobAvailable, doSideGig }) {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.kicker}>КАРЬЕРА</Text>
@@ -1083,6 +2031,35 @@ function CareerScreen({ game, currentJob, takeJob, jobAvailable }) {
       <Metric label="Харизма" value={game.charisma} />
       <Metric label="Профессиональный навык" value={game.professionalSkill} />
       <Metric label="Репутация" value={game.reputation} />
+
+
+      <Section title="Подработки" right="оплата сразу" />
+      {SIDE_GIGS.map(gig => {
+        const available = gig.req(game);
+        const done = !!game.sideGigDoneToday?.[gig.id];
+        return (
+          <Pressable
+            key={gig.id}
+            style={[styles.listCard, done && { opacity: 0.45 }]}
+            disabled={done}
+            onPress={() => doSideGig(gig)}
+          >
+            <View style={styles.listTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.listBrand}>{gig.company}</Text>
+                <Text style={styles.listTitle}>{gig.name}</Text>
+              </View>
+              <Text style={[styles.statusText, { color: done ? C.muted : available ? C.green : C.red }]}>
+                {done ? 'СДЕЛАНО' : available ? 'ДОСТУПНО' : 'НЕДОСТУПНО'}
+              </Text>
+            </View>
+            <Text style={styles.listPrice}>+{money(gig.pay)} ₴ сегодня</Text>
+            <Text style={styles.productFoot}>
+              {gig.hours} ч · −{gig.energy} энергии · {gig.note}
+            </Text>
+          </Pressable>
+        );
+      })}
 
       <Section title="Вакансии" />
       {JOBS.map(job => {
@@ -1130,6 +2107,7 @@ function MarketScreen(props) {
           ['housing', 'Жильё'],
           ['business', 'Бизнес'],
           ['invest', 'Инвестиции'],
+          ['finance', 'Деньги'],
         ].map(([id, label]) => (
           <Pressable key={id} style={[styles.tab, marketTab === id && styles.tabActive]} onPress={() => setMarketTab(id)}>
             <Text style={[styles.tabText, marketTab === id && styles.tabTextActive]}>{label}</Text>
@@ -1142,6 +2120,7 @@ function MarketScreen(props) {
       {marketTab === 'housing' && <HousingMarket {...props} />}
       {marketTab === 'business' && <BusinessMarket {...props} />}
       {marketTab === 'invest' && <InvestmentMarket {...props} />}
+      {marketTab === 'finance' && <FinanceMarket {...props} />}
     </View>
   );
 }
@@ -1209,7 +2188,7 @@ function HousingMarket({ game, chooseHousing }) {
       <Text style={styles.kicker}>НЕДВИЖИМОСТЬ</Text>
       <Text style={styles.heroTitle}>Жильё</Text>
       <Text style={styles.heroSub}>Комфорт влияет на качество восстановления и образ жизни.</Text>
-      {HOUSING.map(h => {
+      {HOUSING.filter(h => h.type !== 'special').map(h => {
         const active = game.housingId === h.id;
         const owns = game.properties.some(p => p.catalogId === h.id);
         return (
@@ -1274,7 +2253,313 @@ function InvestmentMarket({ game, invest }) {
   );
 }
 
-function AssetsScreen({ game, currentPhone, currentHousing, netWorth, sellCar, patch }) {
+
+function FinanceMarket({
+  game,
+  currentJob,
+  netWorth,
+  borrowFromPerson,
+  takeBankLoan,
+  takeMicroloan,
+  repayDebt,
+}) {
+  const bankOffer = calculateBankOffer(game, currentJob, netWorth);
+  const microOffer = calculateMicroOffer(game);
+
+  const motherMax = game.housingId === 'parents' && game.relatives.mother.alive
+    ? Math.max(0, Math.min(30000, Math.round(
+        1000 +
+        game.relatives.mother.relationship * 70 +
+        game.hidden.familyBond * 35 -
+        game.borrowingHistory.latePayments * 450
+      )))
+    : 0;
+
+  const fatherMax = game.housingId === 'parents' && game.relatives.father.alive
+    ? Math.max(0, Math.min(30000, Math.round(
+        1000 +
+        game.relatives.father.relationship * 65 +
+        game.hidden.familyBond * 30 -
+        game.borrowingHistory.latePayments * 450
+      )))
+    : 0;
+
+  const coworkerMax = game.jobId && game.hidden.careerTrust >= 42
+    ? Math.max(0, Math.min(30000, Math.round(
+        1500 + game.hidden.careerTrust * 95 + game.hidden.reliability * 35
+      )))
+    : 0;
+
+  const friendMax = game.hidden.socialTrust >= 55
+    ? Math.max(0, Math.min(30000, Math.round(
+        1000 + game.hidden.socialTrust * 100 + game.hidden.reliability * 35
+      )))
+    : 0;
+
+  const activeDebts = game.debts.filter(d => d.status === 'active');
+  const debtTotal = activeDebts.reduce((sum, d) => sum + debtOutstanding(d), 0);
+  const monthlyLoad = bankMonthlyLoad(game);
+
+  const requestOptions = (max) =>
+    [500, 1000, 2000, 3000, 5000, 10000, 20000].filter(v => v <= max);
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.contentWithTabs}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={styles.kicker}>ФИНАНСЫ</Text>
+      <Text style={styles.heroTitle}>Деньги в долг</Text>
+      <Text style={styles.heroSub}>
+        В трудный момент можно попросить близких, взять банковский кредит или обратиться в МФО.
+        У каждого решения есть последствия.
+      </Text>
+
+      <View style={styles.netCard}>
+        <Text style={styles.cardCaption}>Общий долг</Text>
+        <Text style={[styles.netValue, { color: debtTotal > 0 ? C.red : C.text }]}>
+          {money(debtTotal)} ₴
+        </Text>
+        <View style={styles.netLine} />
+        <View style={styles.dualRow}>
+          <SmallInfo label="Кредитная история" value={creditLabel(game)} />
+          <SmallInfo label="Платежи банкам" value={`${money(monthlyLoad)} ₴ / мес.`} right />
+        </View>
+      </View>
+
+      {activeDebts.length > 0 && (
+        <>
+          <Section title="Текущие долги" right={`${activeDebts.length}`} />
+          {activeDebts.map(debt => {
+            const total = debtOutstanding(debt);
+            const due = debt.dueDate ? daysUntil(game.date, debt.dueDate) : null;
+            const typeLabel =
+              debt.type === 'bank' ? 'БАНКОВСКИЙ КРЕДИТ' :
+              debt.type === 'micro' ? 'МИКРОЗАЙМ' :
+              'ЛИЧНЫЙ ДОЛГ';
+
+            return (
+              <View key={debt.uid} style={styles.productCard}>
+                <Text style={styles.listBrand}>{typeLabel}</Text>
+                <Text style={styles.productTitle}>{debt.lenderName}</Text>
+                <Text style={[styles.productPrice, { color: C.red }]}>{money(total)} ₴</Text>
+
+                {debt.type === 'bank' && (
+                  <>
+                    <Text style={styles.productFoot}>
+                      Ставка: {debt.apr}% годовых · плановый платёж {money(debt.monthlyPayment)} ₴ в месяц
+                    </Text>
+                    {(debt.penalties || 0) > 0 && (
+                      <Text style={[styles.productFoot, { color: C.red }]}>
+                        Просроченные начисления: {money(debt.penalties)} ₴
+                      </Text>
+                    )}
+                  </>
+                )}
+
+                {debt.type === 'micro' && (
+                  <>
+                    <Text style={styles.productFoot}>
+                      Ставка: {((debt.dailyRate || 0) * 100).toFixed(2)}% в день · срок:
+                      {' '}{due >= 0 ? `ещё ${due} дн.` : `просрочено ${Math.abs(due)} дн.`}
+                    </Text>
+                    <Text style={styles.productFoot}>
+                      Проценты: {money(debt.accruedInterest || 0)} ₴ · штрафы: {money(debt.penalties || 0)} ₴
+                    </Text>
+                  </>
+                )}
+
+                {debt.type === 'social' && (
+                  <Text style={styles.productFoot}>
+                    Вернуть до {formatDate(debt.dueDate)}
+                    {due < 0 ? ` · просрочено ${Math.abs(due)} дн.` : ''}
+                  </Text>
+                )}
+
+                <View style={styles.inlineButtons}>
+                  {total > 1500 && (
+                    <Pressable
+                      style={styles.smallButton}
+                      onPress={() => repayDebt(debt, Math.max(500, Math.round(total * 0.25)))}
+                    >
+                      <Text style={styles.smallButtonText}>Часть</Text>
+                    </Pressable>
+                  )}
+                  <Pressable style={styles.smallButton} onPress={() => repayDebt(debt)}>
+                    <Text style={styles.smallButtonText}>Погасить</Text>
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </>
+      )}
+
+      <Section title="Попросить у близких" right="без процентов" />
+
+      {motherMax > 0 ? (
+        <BorrowSource
+          title="Мама"
+          subtitle={`Отношения: ${Math.round(game.relatives.mother.relationship)}/100 · доступно до ${money(motherMax)} ₴`}
+          options={requestOptions(motherMax)}
+          onBorrow={(amount) => borrowFromPerson('mother', amount)}
+        />
+      ) : (
+        <Empty text="Попросить деньги у мамы сейчас недоступно. Это зависит от того, где ты живёшь и ваших отношений." />
+      )}
+
+      {fatherMax > 0 && (
+        <BorrowSource
+          title="Отец"
+          subtitle={`Отношения: ${Math.round(game.relatives.father.relationship)}/100 · доступно до ${money(fatherMax)} ₴`}
+          options={requestOptions(fatherMax)}
+          onBorrow={(amount) => borrowFromPerson('father', amount)}
+        />
+      )}
+
+      <Section title="Знакомые и коллеги" right="репутация важна" />
+
+      {coworkerMax > 0 ? (
+        <BorrowSource
+          title="Коллега"
+          subtitle={`Готов одолжить до ${money(coworkerMax)} ₴. Просрочка может ударить по отношениям на работе.`}
+          options={requestOptions(coworkerMax)}
+          onBorrow={(amount) => borrowFromPerson('coworker', amount)}
+        />
+      ) : (
+        <Empty text="Пока на работе нет человека, у которого удобно попросить деньги." />
+      )}
+
+      {friendMax > 0 ? (
+        <BorrowSource
+          title="Знакомый"
+          subtitle={`Социальные связи позволяют попросить до ${money(friendMax)} ₴.`}
+          options={requestOptions(friendMax)}
+          onBorrow={(amount) => borrowFromPerson('friend', amount)}
+        />
+      ) : (
+        <Empty text="Чем лучше отношения с людьми и твоя надёжность, тем больше возможностей появится здесь." />
+      )}
+
+      <Section title="Банковский кредит" right="дешевле, но строже" />
+
+      <View style={styles.productCard}>
+        <Text style={styles.listBrand}>ПЕРСОНАЛЬНОЕ ПРЕДЛОЖЕНИЕ</Text>
+        <Text style={styles.productTitle}>
+          {bankOffer.approved ? `До ${money(bankOffer.limit)} ₴` : 'Сейчас недоступно'}
+        </Text>
+
+        {bankOffer.approved ? (
+          <>
+            <Text style={styles.productFoot}>
+              Ориентировочная ставка: {bankOffer.apr}% годовых. Банк учитывает доход,
+              текущие долги и историю платежей.
+            </Text>
+
+            {[
+              [5000, 6],
+              [10000, 6],
+              [25000, 12],
+              [50000, 12],
+              [100000, 24],
+              [250000, 24],
+              [500000, 36],
+            ]
+              .filter(([amount]) => amount <= bankOffer.limit)
+              .map(([amount, months]) => {
+                const pay = Math.round(annuityPayment(amount, bankOffer.apr, months));
+                return (
+                  <Pressable
+                    key={`${amount}_${months}`}
+                    style={styles.loanOfferRow}
+                    onPress={() => takeBankLoan(amount, months)}
+                  >
+                    <View>
+                      <Text style={styles.loanOfferTitle}>{money(amount)} ₴</Text>
+                      <Text style={styles.loanOfferSub}>{months} мес. · около {money(pay)} ₴/мес.</Text>
+                    </View>
+                    <Text style={styles.loanOfferArrow}>›</Text>
+                  </Pressable>
+                );
+              })}
+          </>
+        ) : (
+          <Text style={styles.productFoot}>{bankOffer.reason}</Text>
+        )}
+      </View>
+
+      <Section title="Микрозайм" right="быстро и очень дорого" />
+
+      <View style={[styles.productCard, { borderColor: '#4A292E' }]}>
+        <Text style={[styles.listBrand, { color: C.red }]}>МФО</Text>
+        <Text style={styles.productTitle}>
+          {microOffer.approved ? `До ${money(microOffer.limit)} ₴` : 'Новый займ недоступен'}
+        </Text>
+
+        {microOffer.approved ? (
+          <>
+            <Text style={styles.productFoot}>
+              Ставка около {(microOffer.dailyRate * 100).toFixed(2)}% в день.
+              Это заметно дороже банковского кредита. Просрочка дополнительно увеличивает долг.
+            </Text>
+
+            {[1000, 3000, 5000, 10000, 20000, 30000]
+              .filter(v => v <= microOffer.limit)
+              .map(amount => {
+                const term = amount <= 5000 ? 14 : 30;
+                const total = Math.round(amount * (1 + microOffer.dailyRate * term));
+                return (
+                  <Pressable
+                    key={amount}
+                    style={styles.loanOfferRow}
+                    onPress={() => takeMicroloan(amount, term)}
+                  >
+                    <View>
+                      <Text style={styles.loanOfferTitle}>{money(amount)} ₴</Text>
+                      <Text style={styles.loanOfferSub}>
+                        {term} дней · вернуть примерно {money(total)} ₴
+                      </Text>
+                    </View>
+                    <Text style={[styles.loanOfferArrow, { color: C.red }]}>›</Text>
+                  </Pressable>
+                );
+              })}
+          </>
+        ) : (
+          <Text style={styles.productFoot}>{microOffer.reason}</Text>
+        )}
+      </View>
+
+      <Text style={styles.financeNote}>
+        Суммы и ставки — игровая модель, а не предложения реальных банков или МФО.
+        Внутри игры просрочки ухудшают кредитную историю, повышают стресс и могут портить отношения.
+      </Text>
+    </ScrollView>
+  );
+}
+
+function BorrowSource({ title, subtitle, options, onBorrow }) {
+  return (
+    <View style={styles.productCard}>
+      <Text style={styles.productTitle}>{title}</Text>
+      <Text style={styles.productFoot}>{subtitle}</Text>
+      {options.length > 0 ? (
+        <View style={styles.borrowGrid}>
+          {options.map(amount => (
+            <Pressable key={amount} style={styles.borrowChip} onPress={() => onBorrow(amount)}>
+              <Text style={styles.borrowChipText}>{money(amount)} ₴</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.productFoot}>Сейчас просить деньги не стоит.</Text>
+      )}
+    </View>
+  );
+}
+
+function AssetsScreen({ game, currentPhone, currentHousing, netWorth, sellCar, sellPhone, sellProperty, sellBusiness, patch }) {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.kicker}>АКТИВЫ</Text>
@@ -1282,11 +2567,18 @@ function AssetsScreen({ game, currentPhone, currentHousing, netWorth, sellCar, p
       <Text style={styles.heroSub}>Оценочная стоимость всего, чем ты владеешь.</Text>
 
       <Section title="Техника" />
-      <View style={styles.featureCard}>
-        <Text style={styles.featureBrand}>{currentPhone.brand}</Text>
-        <Text style={styles.featureTitle}>{currentPhone.model}</Text>
-        <Text style={styles.featureSub}>Состояние: {Math.round(game.phoneCondition)}%</Text>
-      </View>
+      {currentPhone ? (
+        <View style={styles.featureCard}>
+          <Text style={styles.featureBrand}>{currentPhone.brand}</Text>
+          <Text style={styles.featureTitle}>{currentPhone.model}</Text>
+          <Text style={styles.featureSub}>Состояние: {Math.round(game.phoneCondition)}%</Text>
+          <Pressable style={[styles.smallButton, styles.dangerButton, { marginTop: 14 }]} onPress={sellPhone}>
+            <Text style={[styles.smallButtonText, { color: C.red }]}>Продать телефон</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Empty text="Телефона нет. Некоторые подработки и жизненные возможности будут недоступны." />
+      )}
 
       <Section title="Жильё" />
       <View style={styles.featureCard}>
@@ -1327,6 +2619,10 @@ function AssetsScreen({ game, currentPhone, currentHousing, netWorth, sellCar, p
             <Text style={styles.listBrand}>СОБСТВЕННОСТЬ</Text>
             <Text style={styles.listTitle}>{h.name}</Text>
             <Text style={styles.listPrice}>{money(h.price)} ₴</Text>
+            <Text style={styles.productFoot}>Состояние: {Math.round(p.condition ?? 100)}%</Text>
+            <Pressable style={[styles.smallButton, styles.dangerButton, { marginTop: 12 }]} onPress={() => sellProperty(p, i)}>
+              <Text style={[styles.smallButtonText, { color: C.red }]}>Продать недвижимость</Text>
+            </Pressable>
           </View>
         ) : null;
       })}
@@ -1342,6 +2638,10 @@ function AssetsScreen({ game, currentPhone, currentHousing, netWorth, sellCar, p
             <Text style={[styles.listPrice, { color: b.lastMonthProfit >= 0 ? C.green : C.red }]}>
               {b.lastMonthProfit >= 0 ? '+' : ''}{money(b.lastMonthProfit)} ₴ за прошлый месяц
             </Text>
+            <Text style={styles.productFoot}>Состояние бизнеса: {Math.round(b.condition ?? 100)}%</Text>
+            <Pressable style={[styles.smallButton, styles.dangerButton, { marginTop: 12 }]} onPress={() => sellBusiness(b)}>
+              <Text style={[styles.smallButtonText, { color: C.red }]}>Продать бизнес</Text>
+            </Pressable>
           </View>
         ) : null;
       })}
@@ -1365,11 +2665,15 @@ function MoreScreen({ game, netWorth, resetGame }) {
       <Section title="Финансы за месяц" />
       <InfoCard rows={[
         ['Зарплата', `+${money(game.monthly.salary)} ₴`],
+        ['Подработки', `+${money(game.monthly.sideGigs || 0)} ₴`],
         ['Бизнес', `${game.monthly.business >= 0 ? '+' : ''}${money(game.monthly.business)} ₴`],
         ['Инвестиции', `${game.monthly.investments >= 0 ? '+' : ''}${money(game.monthly.investments)} ₴`],
         ['Жильё', `−${money(game.monthly.housing)} ₴`],
         ['Питание', `−${money(game.monthly.food)} ₴`],
+        ['Помощь семьи', `≈ ${money(game.monthly.familySupport || 0)} ₴`],
         ['Транспорт', `−${money(game.monthly.transport)} ₴`],
+        ['Платежи по долгам', `−${money(game.monthly.debtPayments)} ₴`],
+        ['Из них проценты', `${money(game.monthly.interest)} ₴`],
       ]} />
 
       <Section title="Статистика" />
@@ -1379,6 +2683,10 @@ function MoreScreen({ game, netWorth, resetGame }) {
         ['Всего заработано', `${money(game.stats.totalEarned)} ₴`],
         ['Всего потрачено', `${money(game.stats.totalSpent)} ₴`],
         ['Событий пережито', String(game.stats.eventsSeen)],
+        ['Заработано подработками', `${money(game.stats.sideGigEarned || 0)} ₴`],
+        ['Получено поддержки семьи', `≈ ${money(game.stats.familySupportValue || 0)} ₴`],
+        ['Активный долг', `${money(activeDebtTotal(game))} ₴`],
+        ['Кредитная история', creditLabel(game)],
       ]} />
 
       <Section title="Последние события" />
@@ -1832,6 +3140,36 @@ const styles = StyleSheet.create({
   deathAge: { color: C.text, fontSize: 76, fontWeight: '750', letterSpacing: -3, marginTop: 20 },
   deathYears: { color: C.sub, fontSize: 16 },
   deathCause: { color: C.sub, fontSize: 12, marginTop: 20, lineHeight: 18 },
+
+  loanOfferRow: {
+    minHeight: 58,
+    marginTop: 9,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderRadius: 11,
+    backgroundColor: C.surface2,
+    borderWidth: 1,
+    borderColor: C.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  loanOfferTitle: { color: C.text, fontSize: 13, fontWeight: '750' },
+  loanOfferSub: { color: C.muted, fontSize: 9, marginTop: 4 },
+  loanOfferArrow: { color: C.accent, fontSize: 23, fontWeight: '400', marginLeft: 12 },
+  financeNote: { color: C.muted, fontSize: 9, lineHeight: 15, marginTop: 18, marginBottom: 8 },
+  borrowGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 13 },
+  borrowChip: {
+    paddingHorizontal: 12,
+    minHeight: 37,
+    borderRadius: 10,
+    backgroundColor: C.surface2,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  borrowChipText: { color: C.text, fontSize: 10, fontWeight: '700' },
 });
 
 export default Game;
