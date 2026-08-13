@@ -1912,6 +1912,7 @@ function Game() {
         {screen === 'home' && <HomeScreen {...props} />}
         {screen === 'career' && <CareerScreen {...props} />}
         {screen === 'market' && <MarketScreen {...props} />}
+        {screen === 'finance' && <FinanceMarket {...props} />}
         {screen === 'assets' && <AssetsScreen {...props} />}
         {screen === 'more' && <MoreScreen {...props} />}
       </View>
@@ -2107,7 +2108,6 @@ function MarketScreen(props) {
           ['housing', 'Жильё'],
           ['business', 'Бизнес'],
           ['invest', 'Инвестиции'],
-          ['finance', 'Деньги'],
         ].map(([id, label]) => (
           <Pressable key={id} style={[styles.tab, marketTab === id && styles.tabActive]} onPress={() => setMarketTab(id)}>
             <Text style={[styles.tabText, marketTab === id && styles.tabTextActive]}>{label}</Text>
@@ -2120,7 +2120,6 @@ function MarketScreen(props) {
       {marketTab === 'housing' && <HousingMarket {...props} />}
       {marketTab === 'business' && <BusinessMarket {...props} />}
       {marketTab === 'invest' && <InvestmentMarket {...props} />}
-      {marketTab === 'finance' && <FinanceMarket {...props} />}
     </View>
   );
 }
@@ -2762,6 +2761,7 @@ function BottomNav({ screen, setScreen }) {
     ['home', 'Сегодня'],
     ['career', 'Карьера'],
     ['market', 'Рынок'],
+    ['finance', 'Финансы'],
     ['assets', 'Активы'],
     ['more', 'Ещё'],
   ];
@@ -3109,7 +3109,7 @@ const styles = StyleSheet.create({
   navItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   navDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#373B43', marginBottom: 7 },
   navDotActive: { width: 14, backgroundColor: C.accent },
-  navLabel: { color: '#565C66', fontSize: 9 },
+  navLabel: { color: '#565C66', fontSize: 8 },
   navLabelActive: { color: C.text },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
