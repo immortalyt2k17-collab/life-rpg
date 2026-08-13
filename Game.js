@@ -35,7 +35,7 @@ const clamp = (v, min = 0, max = 100) => Math.max(min, Math.min(max, v));
 const money = (v) => Number(Math.round(v || 0)).toLocaleString('uk-UA');
 
 const START = {
-  version: 7,
+  version: 9,
   date: { day: 12, month: 8, year: 2026 },
   timeMinutes: 8 * 60,
   birthday: { day: 12, month: 8 },
@@ -81,6 +81,15 @@ const START = {
 
   familyMealsToday: 0,
   sideGigDoneToday: {},
+  socialDoneToday: {},
+  socialStats: {
+    conversations: 0,
+    meetups: 0,
+    networking: 0,
+    dates: 0,
+    courses: 0,
+    newConnections: 0,
+  },
 
   phoneId: 'samsung_s3',
   phoneCondition: 55,
@@ -138,6 +147,8 @@ const START = {
     coworker_anna: { name: 'Анна', relation: 0, trust: 0, alive: true },
     coworker_oleg: { name: 'Олег', relation: 0, trust: 0, alive: true },
     boss: { name: 'Руководитель', relation: 0, trust: 0, alive: true },
+    friend_maks: { name: 'Максим', relation: 18, trust: 12, alive: true, role: 'знакомый' },
+    friend_sofia: { name: 'София', relation: 10, trust: 8, alive: true, role: 'знакомая' },
   },
 
   memories: [],
@@ -348,6 +359,75 @@ const BUSINESS_CATALOG = [
   { id: 'restaurant', name: 'Ресторан', price: 6500000, baseDaily: 38000, expenses: 0.68 },
 ];
 
+
+const SOCIAL_ACTIVITIES = [
+  {
+    id: 'casual_talk',
+    name: 'Пообщаться с людьми',
+    subtitle: 'Прогулка, знакомые, обычные разговоры',
+    cost: 0,
+    minutes: 90,
+    energy: 8,
+    fatigue: 5,
+    charisma: 0.14,
+    mood: 2,
+    stress: -2,
+    repeatable: true,
+  },
+  {
+    id: 'friends_meet',
+    name: 'Встретиться с друзьями',
+    subtitle: 'Кафе или прогулка · отношения и настроение',
+    cost: 350,
+    minutes: 180,
+    energy: 10,
+    fatigue: 7,
+    charisma: 0.22,
+    mood: 7,
+    stress: -7,
+    repeatable: false,
+  },
+  {
+    id: 'networking',
+    name: 'Пойти на нетворкинг',
+    subtitle: 'Новые деловые знакомства и практика общения',
+    cost: 700,
+    minutes: 180,
+    energy: 16,
+    fatigue: 10,
+    charisma: 0.38,
+    mood: 1,
+    stress: 3,
+    repeatable: false,
+  },
+  {
+    id: 'date',
+    name: 'Сходить на свидание',
+    subtitle: 'Социальный опыт · результат зависит от состояния и харизмы',
+    cost: 900,
+    minutes: 180,
+    energy: 12,
+    fatigue: 8,
+    charisma: 0.30,
+    mood: 4,
+    stress: 1,
+    repeatable: false,
+  },
+  {
+    id: 'speaking_course',
+    name: 'Курс ораторского мастерства',
+    subtitle: 'Практика речи, уверенности и выступлений',
+    cost: 1800,
+    minutes: 240,
+    energy: 18,
+    fatigue: 12,
+    charisma: 0.85,
+    mood: 1,
+    stress: 2,
+    repeatable: false,
+  },
+];
+
 const EVENTS = {
   family_dinner: {
     id: 'family_dinner',
@@ -390,6 +470,28 @@ const EVENTS = {
       { label: 'Продолжить как обычно', effect: { health: -3, fatigue: 7, stress: 4, longTermHealth: -2 }, memory: 'Проигнорировал ухудшение здоровья' },
     ],
   },
+
+  social_invitation: {
+    id: 'social_invitation',
+    title: 'Приглашение после работы',
+    text: 'Коллеги собираются ненадолго зайти в кафе после смены. Можно поехать домой или присоединиться.',
+    choices: [
+      { label: 'Пойти с коллегами', effect: { time: 120, mood: 5, energy: -8, socialTrust: 3, careerTrust: 1 }, memory: 'Провёл вечер с коллегами после работы' },
+      { label: 'Вежливо отказаться', effect: { socialTrust: 0 }, memory: 'Отказался от встречи с коллегами' },
+      { label: 'Проигнорировать приглашение', effect: { socialTrust: -2 }, memory: 'Проигнорировал приглашение коллег' },
+    ],
+  },
+  old_friend_message: {
+    id: 'old_friend_message',
+    title: 'Сообщение от старого знакомого',
+    text: 'Человек, с которым вы давно не общались, неожиданно пишет и предлагает встретиться.',
+    choices: [
+      { label: 'Найти время для встречи', effect: { time: 150, mood: 5, socialTrust: 2, loneliness: -3 }, memory: 'Восстановил общение со старым знакомым' },
+      { label: 'Ответить, но отказаться', effect: { socialTrust: 0 }, memory: 'Ответил старому знакомому, но не встретился' },
+      { label: 'Не отвечать', effect: { socialTrust: -1, loneliness: 1 }, memory: 'Не ответил старому знакомому' },
+    ],
+  },
+
   promotion_chance: {
     id: 'promotion_chance',
     title: 'Освободилась должность',
@@ -412,6 +514,8 @@ function deepMerge(base, saved) {
   out.borrowingHistory = { ...base.borrowingHistory, ...(saved.borrowingHistory || {}) };
   out.familyMealsToday = saved.familyMealsToday || 0;
   out.sideGigDoneToday = { ...(saved.sideGigDoneToday || {}) };
+  out.socialDoneToday = { ...(saved.socialDoneToday || {}) };
+  out.socialStats = { ...base.socialStats, ...(saved.socialStats || {}) };
   out.properties = (saved.properties || []).map(p => ({ condition: 100, ...p }));
   out.businesses = (saved.businesses || []).map(b => ({ condition: 100, ...b }));
   return out;
@@ -770,6 +874,7 @@ function Game() {
       workedToday: false,
       familyMealsToday: 0,
       sideGigDoneToday: {},
+      socialDoneToday: {},
       stats: { ...g.stats, daysLived: g.stats.daysLived + 1 },
       health: clamp(g.health + healthDelta),
       hidden: {
@@ -1002,7 +1107,11 @@ function Game() {
     const chance = 0.06;
     if (Math.random() > chance) return g;
 
-    const pool = ['family_dinner', 'friend_help'];
+    const pool = ['family_dinner', 'friend_help', 'old_friend_message'];
+
+    if (g.hidden.socialTrust > 45 || g.charisma > 15) {
+      pool.push('social_invitation');
+    }
 
     if (g.jobId) {
       pool.push('coworker_funeral');
@@ -1047,6 +1156,12 @@ function Game() {
         satiety: clamp(g.satiety - 18),
         mood: clamp(g.mood - (job.stress > 15 ? 4 : 1)),
         professionalSkill: clamp(g.professionalSkill + skillGain),
+        charisma: clamp(
+          g.charisma +
+            (['seller', 'operator', 'sales_manager', 'senior_manager', 'director'].includes(job.id)
+              ? (g.fatigue > 70 ? 0.04 : 0.08)
+              : 0.015)
+        ),
         reputation: clamp(g.reputation + 0.15),
         workedToday: true,
         workDaysMonth: g.workDaysMonth + 1,
@@ -1195,6 +1310,124 @@ function Game() {
       mood: clamp(g.mood - 1),
       stress: clamp(g.stress + 2),
     }, 120));
+  };
+
+
+  const doSocialActivity = (activity) => {
+    if (!activity) return;
+    if (!activity.repeatable && game.socialDoneToday?.[activity.id]) {
+      return Alert.alert('Социальная жизнь', 'Сегодня это действие уже выполнялось.');
+    }
+    if (game.cash < activity.cost) {
+      return Alert.alert('Недостаточно денег', `Нужно ${money(activity.cost)} ₴.`);
+    }
+    if (game.energy < activity.energy || game.fatigue > 88) {
+      return Alert.alert('Слишком устал', 'Сейчас общение будет скорее утомлять, чем приносить пользу.');
+    }
+
+    patch(g => {
+      let charismaGain = activity.charisma;
+      const socialCondition = (g.mood + (100 - g.stress) + g.energy) / 3;
+      if (socialCondition < 35) charismaGain *= 0.55;
+      if (socialCondition > 75) charismaGain *= 1.15;
+
+      let moodDelta = activity.mood;
+      let socialTrustDelta = 0.25;
+      let lonelinessDelta = -1.2;
+      let newConnections = 0;
+      let memories = g.memories;
+      let people = { ...g.people };
+
+      if (activity.id === 'friends_meet') {
+        socialTrustDelta = 0.8;
+        lonelinessDelta = -3;
+        people.friend_maks = {
+          ...people.friend_maks,
+          relation: clamp((people.friend_maks?.relation || 0) + 2.5),
+          trust: clamp((people.friend_maks?.trust || 0) + 1.2),
+        };
+      }
+
+      if (activity.id === 'networking') {
+        const chance = Math.min(0.65, 0.18 + g.charisma / 180 + g.reputation / 300);
+        if (Math.random() < chance) {
+          newConnections = 1;
+          socialTrustDelta += 0.8;
+          memories = [
+            ...memories,
+            { date: formatDate(g.date), age: g.age, text: 'На мероприятии завёл полезное новое знакомство' },
+          ].slice(-80);
+        }
+      }
+
+      if (activity.id === 'date') {
+        const successChance = Math.min(
+          0.82,
+          0.28 + g.charisma / 160 + g.mood / 500 - g.stress / 700
+        );
+        if (Math.random() < successChance) {
+          moodDelta += 6;
+          socialTrustDelta += 0.5;
+          lonelinessDelta -= 2;
+          people.friend_sofia = {
+            ...people.friend_sofia,
+            relation: clamp((people.friend_sofia?.relation || 0) + 4),
+            trust: clamp((people.friend_sofia?.trust || 0) + 1.5),
+          };
+          memories = [
+            ...memories,
+            { date: formatDate(g.date), age: g.age, text: 'Свидание прошло хорошо' },
+          ].slice(-80);
+        } else {
+          moodDelta -= 3;
+          memories = [
+            ...memories,
+            { date: formatDate(g.date), age: g.age, text: 'Свидание прошло неловко, но дало опыт общения' },
+          ].slice(-80);
+        }
+      }
+
+      if (activity.id === 'speaking_course') {
+        socialTrustDelta += 0.25;
+        memories = [
+          ...memories,
+          { date: formatDate(g.date), age: g.age, text: 'Посетил занятие по ораторскому мастерству' },
+        ].slice(-80);
+      }
+
+      return advanceMinutes({
+        ...g,
+        cash: g.cash - activity.cost,
+        energy: clamp(g.energy - activity.energy),
+        fatigue: clamp(g.fatigue + activity.fatigue),
+        mood: clamp(g.mood + moodDelta),
+        stress: clamp(g.stress + activity.stress),
+        charisma: clamp(g.charisma + charismaGain),
+        people,
+        hidden: {
+          ...g.hidden,
+          socialTrust: clamp(g.hidden.socialTrust + socialTrustDelta),
+          loneliness: clamp(g.hidden.loneliness + lonelinessDelta),
+        },
+        socialDoneToday: {
+          ...g.socialDoneToday,
+          [activity.id]: true,
+        },
+        socialStats: {
+          ...g.socialStats,
+          conversations: g.socialStats.conversations + (activity.id === 'casual_talk' ? 1 : 0),
+          meetups: g.socialStats.meetups + (activity.id === 'friends_meet' ? 1 : 0),
+          networking: g.socialStats.networking + (activity.id === 'networking' ? 1 : 0),
+          dates: g.socialStats.dates + (activity.id === 'date' ? 1 : 0),
+          courses: g.socialStats.courses + (activity.id === 'speaking_course' ? 1 : 0),
+          newConnections: g.socialStats.newConnections + newConnections,
+        },
+        stats: {
+          ...g.stats,
+          totalSpent: g.stats.totalSpent + activity.cost,
+        },
+      }, activity.minutes);
+    });
   };
 
   const sleep = (hours) => {
@@ -1803,6 +2036,7 @@ function Game() {
       ng.satiety = clamp(ng.satiety + (e.satiety || 0));
       ng.mood = clamp(ng.mood + (e.mood || 0));
       ng.stress = clamp(ng.stress + (e.stress || 0));
+      ng.charisma = clamp(ng.charisma + (e.charisma || 0));
       ng.hidden = {
         ...ng.hidden,
         familyBond: clamp(ng.hidden.familyBond + (e.familyBond || 0)),
@@ -1882,6 +2116,7 @@ function Game() {
     doSideGig,
     workout,
     study,
+    doSocialActivity,
     sleep,
     takeJob,
     jobAvailable,
@@ -1934,7 +2169,7 @@ function TopBar({ game }) {
   );
 }
 
-function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, doWork, eat, eatAtHome, workout, study, sleep }) {
+function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, doWork, eat, eatAtHome, workout, study, doSocialActivity, sleep }) {
   return (
     <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.kicker}>СЕГОДНЯ</Text>
@@ -1986,6 +2221,22 @@ function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, 
       <ActionRow title="Перекус" subtitle="Быстро и дёшево" meta="120 ₴" onPress={() => eat('cheap')} />
       <ActionRow title="Нормальная еда" subtitle="Сбалансированный приём пищи" meta="280 ₴" onPress={() => eat('normal')} />
       <ActionRow title="Хороший ресторан" subtitle="Лучше настроение и питание" meta="650 ₴" onPress={() => eat('good')} />
+
+
+      <Section title="Социальная жизнь" right={`харизма ${game.charisma.toFixed(1)}`} />
+      {SOCIAL_ACTIVITIES.map(activity => {
+        const done = !!game.socialDoneToday?.[activity.id];
+        return (
+          <ActionRow
+            key={activity.id}
+            title={activity.name}
+            subtitle={activity.subtitle}
+            meta={done && !activity.repeatable ? 'Выполнено' : activity.cost > 0 ? `${money(activity.cost)} ₴` : 'Бесплатно'}
+            disabled={done && !activity.repeatable}
+            onPress={() => doSocialActivity(activity)}
+          />
+        );
+      })}
 
       <Section title="Сон" right="восстановление" />
       <View style={styles.choiceRow}>
@@ -2660,6 +2911,16 @@ function MoreScreen({ game, netWorth, resetGame }) {
       <Metric label="Физическая форма" value={game.fitness} />
       <Metric label="Стресс" value={game.stress} inverse />
       <Metric label="Усталость" value={game.fatigue} inverse />
+
+
+      <Section title="Социальная жизнь" />
+      <InfoCard rows={[
+        ['Харизма', game.charisma.toFixed(1)],
+        ['Встречи с друзьями', String(game.socialStats?.meetups || 0)],
+        ['Нетворкинг', String(game.socialStats?.networking || 0)],
+        ['Свидания', String(game.socialStats?.dates || 0)],
+        ['Новые знакомства', String(game.socialStats?.newConnections || 0)],
+      ]} />
 
       <Section title="Финансы за месяц" />
       <InfoCard rows={[
