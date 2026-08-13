@@ -35,7 +35,7 @@ const clamp = (v, min = 0, max = 100) => Math.max(min, Math.min(max, v));
 const money = (v) => Number(Math.round(v || 0)).toLocaleString('uk-UA');
 
 const START = {
-  version: 9,
+  version: 10,
   date: { day: 12, month: 8, year: 2026 },
   timeMinutes: 8 * 60,
   birthday: { day: 12, month: 8 },
@@ -98,7 +98,18 @@ const START = {
   housingId: 'parents',
   properties: [],
   businesses: [],
-  investments: 0,
+  investments: 0, // legacy field; old saves are migrated automatically
+  investmentPortfolio: {
+    holdings: {},
+    prices: {},
+    deposits: [],
+    bonds: [],
+    legacyValue: 0,
+    realizedPnL: 0,
+    dividendsReceived: 0,
+    interestReceived: 0,
+    lastMarketMove: {},
+  },
 
   debts: [],
   borrowingHistory: {
@@ -360,6 +371,144 @@ const BUSINESS_CATALOG = [
 ];
 
 
+
+const INVESTMENT_ASSETS = [
+  {
+    id: 'spy',
+    type: 'etf',
+    ticker: 'SPY',
+    name: 'SPDR S&P 500 ETF',
+    price: 24500,
+    drift: 0.007,
+    volatility: 0.045,
+    dividendYield: 0.012,
+    risk: 'Средний',
+  },
+  {
+    id: 'qqq',
+    type: 'etf',
+    ticker: 'QQQ',
+    name: 'Invesco QQQ',
+    price: 21800,
+    drift: 0.008,
+    volatility: 0.055,
+    dividendYield: 0.006,
+    risk: 'Выше среднего',
+  },
+  {
+    id: 'aapl',
+    type: 'stock',
+    ticker: 'AAPL',
+    name: 'Apple',
+    price: 8200,
+    drift: 0.009,
+    volatility: 0.075,
+    dividendYield: 0.004,
+    risk: 'Выше среднего',
+  },
+  {
+    id: 'msft',
+    type: 'stock',
+    ticker: 'MSFT',
+    name: 'Microsoft',
+    price: 17500,
+    drift: 0.008,
+    volatility: 0.065,
+    dividendYield: 0.007,
+    risk: 'Выше среднего',
+  },
+  {
+    id: 'nvda',
+    type: 'stock',
+    ticker: 'NVDA',
+    name: 'NVIDIA',
+    price: 7100,
+    drift: 0.012,
+    volatility: 0.12,
+    dividendYield: 0.001,
+    risk: 'Высокий',
+  },
+  {
+    id: 'tsla',
+    type: 'stock',
+    ticker: 'TSLA',
+    name: 'Tesla',
+    price: 13800,
+    drift: 0.007,
+    volatility: 0.14,
+    dividendYield: 0,
+    risk: 'Высокий',
+  },
+  {
+    id: 'btc',
+    type: 'crypto',
+    ticker: 'BTC',
+    name: 'Bitcoin',
+    price: 4200000,
+    drift: 0.014,
+    volatility: 0.19,
+    dividendYield: 0,
+    risk: 'Очень высокий',
+  },
+  {
+    id: 'eth',
+    type: 'crypto',
+    ticker: 'ETH',
+    name: 'Ethereum',
+    price: 185000,
+    drift: 0.012,
+    volatility: 0.18,
+    dividendYield: 0,
+    risk: 'Очень высокий',
+  },
+];
+
+const DEPOSIT_PRODUCTS = [
+  { id: 'dep_30', name: 'Депозит на 30 дней', termDays: 30, annualRate: 9.5, min: 1000 },
+  { id: 'dep_90', name: 'Депозит на 3 месяца', termDays: 90, annualRate: 11.5, min: 3000 },
+  { id: 'dep_180', name: 'Депозит на 6 месяцев', termDays: 180, annualRate: 13.0, min: 5000 },
+  { id: 'dep_365', name: 'Депозит на 12 месяцев', termDays: 365, annualRate: 14.0, min: 10000 },
+];
+
+const BOND_PRODUCTS = [
+  { id: 'ovgz_180', name: 'ОВГЗ · 6 месяцев', termDays: 180, annualRate: 14.5, min: 1000 },
+  { id: 'ovgz_365', name: 'ОВГЗ · 12 месяцев', termDays: 365, annualRate: 16.0, min: 1000 },
+  { id: 'ovgz_730', name: 'ОВГЗ · 24 месяца', termDays: 730, annualRate: 17.0, min: 5000 },
+];
+
+function investmentAssetById(id) {
+  return INVESTMENT_ASSETS.find(a => a.id === id) || null;
+}
+
+function investmentPrice(game, assetId) {
+  const asset = investmentAssetById(assetId);
+  if (!asset) return 0;
+  return game.investmentPortfolio?.prices?.[assetId] || asset.price;
+}
+
+function marketHoldingsValue(game) {
+  const holdings = game.investmentPortfolio?.holdings || {};
+  return Object.entries(holdings).reduce((sum, [assetId, holding]) => {
+    return sum + (holding.units || 0) * investmentPrice(game, assetId);
+  }, 0);
+}
+
+function fixedInvestmentValue(game) {
+  const portfolio = game.investmentPortfolio || {};
+  const deposits = (portfolio.deposits || [])
+    .filter(x => x.status === 'active')
+    .reduce((sum, x) => sum + (x.principal || 0), 0);
+  const bonds = (portfolio.bonds || [])
+    .filter(x => x.status === 'active')
+    .reduce((sum, x) => sum + (x.principal || 0), 0);
+  return deposits + bonds;
+}
+
+function investmentTotalValue(game) {
+  const legacy = game.investmentPortfolio?.legacyValue || 0;
+  return marketHoldingsValue(game) + fixedInvestmentValue(game) + legacy;
+}
+
 const SOCIAL_ACTIVITIES = [
   {
     id: 'casual_talk',
@@ -518,6 +667,25 @@ function deepMerge(base, saved) {
   out.socialStats = { ...base.socialStats, ...(saved.socialStats || {}) };
   out.properties = (saved.properties || []).map(p => ({ condition: 100, ...p }));
   out.businesses = (saved.businesses || []).map(b => ({ condition: 100, ...b }));
+
+  const savedPortfolio = saved.investmentPortfolio || {};
+  out.investmentPortfolio = {
+    ...base.investmentPortfolio,
+    ...savedPortfolio,
+    holdings: { ...(savedPortfolio.holdings || {}) },
+    prices: { ...(savedPortfolio.prices || {}) },
+    deposits: [...(savedPortfolio.deposits || [])],
+    bonds: [...(savedPortfolio.bonds || [])],
+    lastMarketMove: { ...(savedPortfolio.lastMarketMove || {}) },
+  };
+
+  // v9 and earlier had one number called investments.
+  // Preserve that money instead of deleting it during migration.
+  if (!saved.investmentPortfolio && Number(saved.investments || 0) > 0) {
+    out.investmentPortfolio.legacyValue = Number(saved.investments || 0);
+  }
+  out.investments = 0;
+
   return out;
 }
 
@@ -729,7 +897,7 @@ function Game() {
     }, 0);
     const debts = game.debts.reduce((sum, debt) => sum + debtOutstanding(debt), 0);
     const phoneValue = currentPhone ? currentPhone.price * game.phoneCondition / 100 * 0.55 : 0;
-    return Math.round(game.cash + game.bank + cars + props + biz + game.investments + phoneValue - debts);
+    return Math.round(game.cash + game.bank + cars + props + biz + investmentTotalValue(game) + phoneValue - debts);
   }, [game, currentPhone]);
 
   const patch = (updater) => {
@@ -848,6 +1016,58 @@ function Game() {
     };
   };
 
+
+  const processDailyInvestments = (g) => {
+    const portfolio = g.investmentPortfolio || START.investmentPortfolio;
+    const today = dateSerial(g.date);
+    let cash = g.cash;
+    let interestReceived = portfolio.interestReceived || 0;
+    let totalEarnedAdd = 0;
+    let memories = [...g.memories];
+
+    const mature = (item, kind) => {
+      if (item.status !== 'active' || today < item.maturitySerial) return item;
+      const interest = Math.round(
+        item.principal * (item.annualRate / 100) * (item.termDays / 365)
+      );
+      const payout = item.principal + interest;
+      cash += payout;
+      interestReceived += interest;
+      totalEarnedAdd += interest;
+      memories.push({
+        date: formatDate(g.date),
+        age: g.age,
+        text: `${kind} погашен: получено ${money(payout)} ₴, из них ${money(interest)} ₴ дохода`,
+      });
+      return {
+        ...item,
+        status: 'closed',
+        closedAt: g.date,
+        payout,
+        interest,
+      };
+    };
+
+    const deposits = (portfolio.deposits || []).map(x => mature(x, 'Депозит'));
+    const bonds = (portfolio.bonds || []).map(x => mature(x, 'ОВГЗ'));
+
+    return {
+      ...g,
+      cash,
+      investmentPortfolio: {
+        ...portfolio,
+        deposits,
+        bonds,
+        interestReceived,
+      },
+      stats: {
+        ...g.stats,
+        totalEarned: g.stats.totalEarned + totalEarnedAdd,
+      },
+      memories: memories.slice(-80),
+    };
+  };
+
   const processNewDay = (g) => {
     const oldDate = g.date;
     const nd = nextDate(oldDate);
@@ -911,6 +1131,7 @@ function Game() {
     }
 
     ng = processDailyDebts(ng);
+    ng = processDailyInvestments(ng);
     ng = maybeDeath(ng);
     if (ng.alive) ng = maybeGenerateEvent(ng);
     return ng;
@@ -942,8 +1163,39 @@ function Game() {
     });
     income += businessIncome;
 
-    const investmentReturn = Math.round(g.investments * ((Math.random() * 0.06) - 0.02));
-    income += investmentReturn;
+    const oldPortfolio = g.investmentPortfolio || START.investmentPortfolio;
+    const prices = { ...(oldPortfolio.prices || {}) };
+    const lastMarketMove = {};
+    const quarterEnd = [3, 6, 9, 12].includes(g.date.month);
+    let investmentCashIncome = 0;
+
+    INVESTMENT_ASSETS.forEach(asset => {
+      const oldPrice = prices[asset.id] || asset.price;
+      const rawMove = asset.drift + ((Math.random() * 2 - 1) * asset.volatility);
+      const move = Math.max(-0.35, Math.min(0.35, rawMove));
+      const newPrice = Math.max(1, Math.round(oldPrice * (1 + move)));
+      prices[asset.id] = newPrice;
+      lastMarketMove[asset.id] = move;
+
+      if (quarterEnd && asset.dividendYield > 0) {
+        const holding = oldPortfolio.holdings?.[asset.id];
+        if (holding?.units > 0) {
+          const dividend = Math.round(
+            holding.units * newPrice * (asset.dividendYield / 4)
+          );
+          investmentCashIncome += dividend;
+        }
+      }
+    });
+
+    const investmentPortfolio = {
+      ...oldPortfolio,
+      prices,
+      lastMarketMove,
+      dividendsReceived: (oldPortfolio.dividendsReceived || 0) + investmentCashIncome,
+    };
+
+    income += investmentCashIncome;
 
     const livingWithParents = g.housingId === 'parents' && g.relatives.mother.alive;
     const housingCost = livingWithParents
@@ -1043,12 +1295,13 @@ function Game() {
       },
       workDaysMonth: 0,
       businesses,
+      investmentPortfolio,
       careerMonths: job ? g.careerMonths + 1 : g.careerMonths,
       yearsExperience: job ? Number(((g.careerMonths + 1) / 12).toFixed(1)) : g.yearsExperience,
       monthly: {
-        salary: job ? income - businessIncome - investmentReturn : 0,
+        salary: job ? income - businessIncome - investmentCashIncome : 0,
         business: businessIncome,
-        investments: investmentReturn,
+        investments: investmentCashIncome,
         housing: housingCost,
         food,
         familySupport,
@@ -1700,9 +1953,238 @@ function Game() {
     );
   };
 
-  const invest = (amount) => {
+  const buyMarketAsset = (assetId, amount) => {
+    const asset = investmentAssetById(assetId);
+    if (!asset) return;
+    if (amount < 100) return Alert.alert('Слишком маленькая сумма');
     if (game.cash < amount) return Alert.alert('Недостаточно денег');
-    patch(g => ({ ...g, cash: g.cash - amount, investments: g.investments + amount }));
+
+    patch(g => {
+      const price = investmentPrice(g, assetId);
+      const units = amount / price;
+      const portfolio = g.investmentPortfolio || START.investmentPortfolio;
+      const old = portfolio.holdings?.[assetId] || { units: 0, avgPrice: 0, invested: 0 };
+      const oldCost = (old.units || 0) * (old.avgPrice || price);
+      const newUnits = (old.units || 0) + units;
+      const avgPrice = newUnits > 0 ? (oldCost + amount) / newUnits : price;
+
+      return {
+        ...g,
+        cash: g.cash - amount,
+        investmentPortfolio: {
+          ...portfolio,
+          holdings: {
+            ...(portfolio.holdings || {}),
+            [assetId]: {
+              units: newUnits,
+              avgPrice,
+              invested: (old.invested || 0) + amount,
+            },
+          },
+        },
+        stats: { ...g.stats, totalSpent: g.stats.totalSpent + amount },
+        memories: [...g.memories, {
+          date: formatDate(g.date),
+          age: g.age,
+          text: `Инвестировал ${money(amount)} ₴ в ${asset.ticker}`,
+        }].slice(-80),
+      };
+    });
+  };
+
+  const sellMarketAsset = (assetId, fraction = 1) => {
+    const asset = investmentAssetById(assetId);
+    const holding = game.investmentPortfolio?.holdings?.[assetId];
+    if (!asset || !holding?.units) return;
+
+    const part = Math.max(0.01, Math.min(1, fraction));
+    const unitsToSell = holding.units * part;
+    const currentPrice = investmentPrice(game, assetId);
+    const proceeds = unitsToSell * currentPrice;
+    const costBasis = unitsToSell * (holding.avgPrice || currentPrice);
+    const pnl = proceeds - costBasis;
+
+    Alert.alert(
+      `Продать ${asset.ticker}?`,
+      `${part >= 0.999 ? 'Вся позиция' : `${Math.round(part * 100)}% позиции`}
+` +
+      `Получишь около ${money(proceeds)} ₴
+` +
+      `Результат: ${pnl >= 0 ? '+' : ''}${money(pnl)} ₴`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Продать',
+          onPress: () => patch(g => {
+            const portfolio = g.investmentPortfolio || START.investmentPortfolio;
+            const live = portfolio.holdings?.[assetId];
+            if (!live?.units) return g;
+            const liveUnitsToSell = live.units * part;
+            const livePrice = investmentPrice(g, assetId);
+            const liveProceeds = liveUnitsToSell * livePrice;
+            const liveCost = liveUnitsToSell * (live.avgPrice || livePrice);
+            const remaining = live.units - liveUnitsToSell;
+            const holdings = { ...(portfolio.holdings || {}) };
+
+            if (remaining <= 0.0000001) {
+              delete holdings[assetId];
+            } else {
+              holdings[assetId] = {
+                ...live,
+                units: remaining,
+                invested: Math.max(0, (live.invested || 0) - liveCost),
+              };
+            }
+
+            return {
+              ...g,
+              cash: g.cash + liveProceeds,
+              investmentPortfolio: {
+                ...portfolio,
+                holdings,
+                realizedPnL: (portfolio.realizedPnL || 0) + (liveProceeds - liveCost),
+              },
+              stats: {
+                ...g.stats,
+                totalEarned: g.stats.totalEarned + Math.max(0, liveProceeds - liveCost),
+              },
+              memories: [...g.memories, {
+                date: formatDate(g.date),
+                age: g.age,
+                text: `Продал ${asset.ticker}: ${liveProceeds - liveCost >= 0 ? '+' : ''}${money(liveProceeds - liveCost)} ₴`,
+              }].slice(-80),
+            };
+          }),
+        },
+      ]
+    );
+  };
+
+  const openDeposit = (productId, amount) => {
+    const product = DEPOSIT_PRODUCTS.find(x => x.id === productId);
+    if (!product) return;
+    if (amount < product.min) return Alert.alert('Минимальная сумма', `Нужно минимум ${money(product.min)} ₴.`);
+    if (game.cash < amount) return Alert.alert('Недостаточно денег');
+
+    patch(g => ({
+      ...g,
+      cash: g.cash - amount,
+      investmentPortfolio: {
+        ...(g.investmentPortfolio || START.investmentPortfolio),
+        deposits: [
+          ...(g.investmentPortfolio?.deposits || []),
+          {
+            uid: `deposit_${Date.now()}`,
+            productId,
+            principal: amount,
+            annualRate: product.annualRate,
+            termDays: product.termDays,
+            openedSerial: dateSerial(g.date),
+            maturitySerial: dateSerial(g.date) + product.termDays,
+            status: 'active',
+          },
+        ],
+      },
+      stats: { ...g.stats, totalSpent: g.stats.totalSpent + amount },
+    }));
+  };
+
+  const openBond = (productId, amount) => {
+    const product = BOND_PRODUCTS.find(x => x.id === productId);
+    if (!product) return;
+    if (amount < product.min) return Alert.alert('Минимальная сумма', `Нужно минимум ${money(product.min)} ₴.`);
+    if (game.cash < amount) return Alert.alert('Недостаточно денег');
+
+    patch(g => ({
+      ...g,
+      cash: g.cash - amount,
+      investmentPortfolio: {
+        ...(g.investmentPortfolio || START.investmentPortfolio),
+        bonds: [
+          ...(g.investmentPortfolio?.bonds || []),
+          {
+            uid: `bond_${Date.now()}`,
+            productId,
+            principal: amount,
+            annualRate: product.annualRate,
+            termDays: product.termDays,
+            openedSerial: dateSerial(g.date),
+            maturitySerial: dateSerial(g.date) + product.termDays,
+            status: 'active',
+          },
+        ],
+      },
+      stats: { ...g.stats, totalSpent: g.stats.totalSpent + amount },
+    }));
+  };
+
+  const closeFixedInvestment = (uid, kind) => {
+    const key = kind === 'bond' ? 'bonds' : 'deposits';
+    const item = game.investmentPortfolio?.[key]?.find(x => x.uid === uid && x.status === 'active');
+    if (!item) return;
+
+    const today = dateSerial(game.date);
+    const elapsed = Math.max(0, today - item.openedSerial);
+    const early = today < item.maturitySerial;
+    const earnedInterest = early
+      ? 0
+      : Math.round(item.principal * (item.annualRate / 100) * (item.termDays / 365));
+
+    // Early deposit withdrawal returns principal only.
+    // Early OVGZ sale is simplified as a 2% market discount.
+    const principalBack = early && kind === 'bond'
+      ? Math.round(item.principal * 0.98)
+      : item.principal;
+    const payout = principalBack + earnedInterest;
+
+    Alert.alert(
+      early ? 'Закрыть досрочно?' : 'Получить деньги?',
+      early
+        ? (kind === 'bond'
+            ? `При досрочной продаже ОВГЗ получишь примерно ${money(payout)} ₴.`
+            : `Проценты по депозиту будут потеряны. Вернётся ${money(payout)} ₴.`)
+        : `К выплате ${money(payout)} ₴.`,
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Получить',
+          onPress: () => patch(g => {
+            const portfolio = g.investmentPortfolio || START.investmentPortfolio;
+            const list = (portfolio[key] || []).map(x => x.uid === uid
+              ? { ...x, status: 'closed', closedAt: g.date, payout, interest: earnedInterest }
+              : x
+            );
+            return {
+              ...g,
+              cash: g.cash + payout,
+              investmentPortfolio: {
+                ...portfolio,
+                [key]: list,
+                interestReceived: (portfolio.interestReceived || 0) + earnedInterest,
+                realizedPnL: (portfolio.realizedPnL || 0) + (payout - item.principal),
+              },
+              stats: {
+                ...g.stats,
+                totalEarned: g.stats.totalEarned + Math.max(0, earnedInterest),
+              },
+            };
+          }),
+        },
+      ]
+    );
+  };
+
+  const withdrawLegacyInvestments = () => {
+    const value = game.investmentPortfolio?.legacyValue || 0;
+    if (value <= 0) return;
+    patch(g => ({
+      ...g,
+      cash: g.cash + value,
+      investmentPortfolio: {
+        ...(g.investmentPortfolio || START.investmentPortfolio),
+        legacyValue: 0,
+      },
+    }));
   };
 
   const borrowFromPerson = (lenderKey, amount) => {
@@ -2128,7 +2610,12 @@ function Game() {
     sellBusiness,
     chooseHousing,
     buyBusiness,
-    invest,
+    buyMarketAsset,
+    sellMarketAsset,
+    openDeposit,
+    openBond,
+    closeFixedInvestment,
+    withdrawLegacyInvestments,
     borrowFromPerson,
     takeBankLoan,
     takeMicroloan,
@@ -2480,25 +2967,243 @@ function BusinessMarket({ game, buyBusiness }) {
   );
 }
 
-function InvestmentMarket({ game, invest }) {
+function InvestmentMarket({
+  game,
+  buyMarketAsset,
+  sellMarketAsset,
+  openDeposit,
+  openBond,
+  closeFixedInvestment,
+  withdrawLegacyInvestments,
+}) {
+  const portfolio = game.investmentPortfolio || START.investmentPortfolio;
+  const marketValue = marketHoldingsValue(game);
+  const fixedValue = fixedInvestmentValue(game);
+  const totalValue = investmentTotalValue(game);
+
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.contentWithTabs} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.contentWithTabs}
+      showsVerticalScrollIndicator={false}
+    >
       <Text style={styles.kicker}>КАПИТАЛ</Text>
       <Text style={styles.heroTitle}>Инвестиции</Text>
-      <Text style={styles.heroSub}>Упрощённый диверсифицированный портфель. Доходность может быть и отрицательной.</Text>
+      <Text style={styles.heroSub}>
+        Котировки внутри игры симулируются. Рыночные активы могут расти и падать,
+        а депозиты и ОВГЗ имеют фиксированный срок.
+      </Text>
+
       <View style={styles.netCard}>
-        <Text style={styles.cardCaption}>В портфеле</Text>
-        <Text style={styles.netValue}>{money(game.investments)} ₴</Text>
+        <Text style={styles.cardCaption}>Инвестиционный капитал</Text>
+        <Text style={styles.netValue}>{money(totalValue)} ₴</Text>
+        <View style={styles.netLine} />
+        <View style={styles.dualRow}>
+          <SmallInfo label="Биржа" value={`${money(marketValue)} ₴`} />
+          <SmallInfo label="Фиксированный доход" value={`${money(fixedValue)} ₴`} right />
+        </View>
       </View>
-      <Section title="Пополнить" />
-      <View style={styles.choiceRow}>
-        {[1000, 5000, 10000, 50000].map(v => (
-          <Pressable key={v} style={styles.choicePill} onPress={() => invest(v)}>
-            <Text style={styles.choicePillBig}>{v >= 1000 ? `${v/1000}k` : v}</Text>
-            <Text style={styles.choicePillSmall}>₴</Text>
-          </Pressable>
-        ))}
-      </View>
+
+      {portfolio.legacyValue > 0 && (
+        <>
+          <Section title="Старый портфель" />
+          <View style={styles.featureCard}>
+            <Text style={styles.featureBrand}>МИГРАЦИЯ СОХРАНЕНИЯ</Text>
+            <Text style={styles.featureTitle}>Старый диверсифицированный фонд</Text>
+            <Text style={styles.featurePrice}>{money(portfolio.legacyValue)} ₴</Text>
+            <Text style={styles.featureSub}>
+              Деньги из предыдущей версии сохранены. Их можно вывести без потерь.
+            </Text>
+            <Pressable style={styles.buyButton} onPress={withdrawLegacyInvestments}>
+              <Text style={styles.buyButtonText}>Вывести в наличные</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
+
+      <Section title="Биржа" right="симулируемые котировки" />
+      {INVESTMENT_ASSETS.map(asset => {
+        const price = investmentPrice(game, asset.id);
+        const holding = portfolio.holdings?.[asset.id];
+        const positionValue = (holding?.units || 0) * price;
+        const cost = (holding?.units || 0) * (holding?.avgPrice || price);
+        const pnl = positionValue - cost;
+        const move = portfolio.lastMarketMove?.[asset.id] || 0;
+
+        return (
+          <View key={asset.id} style={styles.productCard}>
+            <View style={styles.listTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.listBrand}>
+                  {asset.type === 'etf' ? 'ETF' : asset.type === 'crypto' ? 'КРИПТО' : 'АКЦИЯ'} · {asset.ticker}
+                </Text>
+                <Text style={styles.productTitle}>{asset.name}</Text>
+              </View>
+              <Text
+                style={[
+                  styles.statusText,
+                  { color: move >= 0 ? C.green : C.red },
+                ]}
+              >
+                {move >= 0 ? '+' : ''}{(move * 100).toFixed(1)}%
+              </Text>
+            </View>
+
+            <Text style={styles.productPrice}>{money(price)} ₴</Text>
+            <Text style={styles.productFoot}>
+              Риск: {asset.risk}
+              {asset.dividendYield > 0 ? ` · дивидендная доходность ≈ ${(asset.dividendYield * 100).toFixed(1)}%/год` : ''}
+            </Text>
+
+            {holding?.units > 0 && (
+              <View style={styles.requireBox}>
+                <Req label="Стоимость позиции" current={Math.round(positionValue)} need={Math.round(positionValue)} />
+                <View style={styles.reqRow}>
+                  <Text style={styles.reqLabel}>Средняя цена покупки</Text>
+                  <Text style={styles.reqValue}>{money(holding.avgPrice)} ₴</Text>
+                </View>
+                <View style={styles.reqRow}>
+                  <Text style={styles.reqLabel}>Прибыль / убыток</Text>
+                  <Text style={[styles.reqValue, { color: pnl >= 0 ? C.green : C.red }]}>
+                    {pnl >= 0 ? '+' : ''}{money(pnl)} ₴
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.productFoot}>Купить на сумму:</Text>
+            <View style={styles.inlineButtons}>
+              {[1000, 5000, 10000].map(amount => (
+                <Pressable
+                  key={amount}
+                  style={styles.smallButton}
+                  onPress={() => buyMarketAsset(asset.id, amount)}
+                >
+                  <Text style={styles.smallButtonText}>{money(amount)} ₴</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {holding?.units > 0 && (
+              <View style={styles.inlineButtons}>
+                <Pressable
+                  style={styles.smallButton}
+                  onPress={() => sellMarketAsset(asset.id, 0.5)}
+                >
+                  <Text style={styles.smallButtonText}>Продать 50%</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.smallButton, styles.dangerButton]}
+                  onPress={() => sellMarketAsset(asset.id, 1)}
+                >
+                  <Text style={[styles.smallButtonText, { color: C.red }]}>Продать всё</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        );
+      })}
+
+      <Section title="Банковские депозиты" />
+      {DEPOSIT_PRODUCTS.map(product => (
+        <View key={product.id} style={styles.listCard}>
+          <Text style={styles.listBrand}>ДЕПОЗИТ</Text>
+          <Text style={styles.listTitle}>{product.name}</Text>
+          <Text style={styles.listPrice}>{product.annualRate.toFixed(1)}% годовых</Text>
+          <Text style={styles.productFoot}>Минимум: {money(product.min)} ₴</Text>
+          <View style={styles.inlineButtons}>
+            {[product.min, product.min * 5, product.min * 10].map(amount => (
+              <Pressable
+                key={amount}
+                style={styles.smallButton}
+                onPress={() => openDeposit(product.id, amount)}
+              >
+                <Text style={styles.smallButtonText}>{money(amount)} ₴</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+
+      {(portfolio.deposits || []).filter(x => x.status === 'active').length > 0 && (
+        <>
+          <Section title="Мои депозиты" />
+          {(portfolio.deposits || []).filter(x => x.status === 'active').map(item => {
+            const remaining = Math.max(0, item.maturitySerial - dateSerial(game.date));
+            const expected = Math.round(
+              item.principal * (item.annualRate / 100) * (item.termDays / 365)
+            );
+            return (
+              <View key={item.uid} style={styles.featureCard}>
+                <Text style={styles.featureBrand}>АКТИВНЫЙ ДЕПОЗИТ</Text>
+                <Text style={styles.featureTitle}>{money(item.principal)} ₴</Text>
+                <Text style={styles.featurePrice}>+{money(expected)} ₴ к сроку</Text>
+                <Text style={styles.featureSub}>Осталось: {remaining} дней · {item.annualRate}% годовых</Text>
+                <Pressable
+                  style={styles.smallButton}
+                  onPress={() => closeFixedInvestment(item.uid, 'deposit')}
+                >
+                  <Text style={styles.smallButtonText}>Забрать досрочно</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </>
+      )}
+
+      <Section title="ОВГЗ" right="фиксированный доход" />
+      {BOND_PRODUCTS.map(product => (
+        <View key={product.id} style={styles.listCard}>
+          <Text style={styles.listBrand}>ГОСУДАРСТВЕННЫЕ ОБЛИГАЦИИ</Text>
+          <Text style={styles.listTitle}>{product.name}</Text>
+          <Text style={styles.listPrice}>{product.annualRate.toFixed(1)}% годовых</Text>
+          <Text style={styles.productFoot}>Минимум: {money(product.min)} ₴</Text>
+          <View style={styles.inlineButtons}>
+            {[product.min, product.min * 5, product.min * 10].map(amount => (
+              <Pressable
+                key={amount}
+                style={styles.smallButton}
+                onPress={() => openBond(product.id, amount)}
+              >
+                <Text style={styles.smallButtonText}>{money(amount)} ₴</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+
+      {(portfolio.bonds || []).filter(x => x.status === 'active').length > 0 && (
+        <>
+          <Section title="Мои ОВГЗ" />
+          {(portfolio.bonds || []).filter(x => x.status === 'active').map(item => {
+            const remaining = Math.max(0, item.maturitySerial - dateSerial(game.date));
+            const expected = Math.round(
+              item.principal * (item.annualRate / 100) * (item.termDays / 365)
+            );
+            return (
+              <View key={item.uid} style={styles.featureCard}>
+                <Text style={styles.featureBrand}>ОВГЗ</Text>
+                <Text style={styles.featureTitle}>{money(item.principal)} ₴</Text>
+                <Text style={styles.featurePrice}>+{money(expected)} ₴ к погашению</Text>
+                <Text style={styles.featureSub}>До погашения: {remaining} дней · {item.annualRate}% годовых</Text>
+                <Pressable
+                  style={styles.smallButton}
+                  onPress={() => closeFixedInvestment(item.uid, 'bond')}
+                >
+                  <Text style={styles.smallButtonText}>Продать досрочно</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </>
+      )}
+
+      <Section title="Результат инвестиций" />
+      <InfoCard rows={[
+        ['Реализованная прибыль', `${portfolio.realizedPnL >= 0 ? '+' : ''}${money(portfolio.realizedPnL)} ₴`],
+        ['Получено дивидендов', `${money(portfolio.dividendsReceived)} ₴`],
+        ['Получено процентов', `${money(portfolio.interestReceived)} ₴`],
+      ]} />
     </ScrollView>
   );
 }
