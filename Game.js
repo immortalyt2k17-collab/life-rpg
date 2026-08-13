@@ -35,7 +35,7 @@ const clamp = (v, min = 0, max = 100) => Math.max(min, Math.min(max, v));
 const money = (v) => Number(Math.round(v || 0)).toLocaleString('uk-UA');
 
 const START = {
-  version: 10,
+  version: 11,
   date: { day: 12, month: 8, year: 2026 },
   timeMinutes: 8 * 60,
   birthday: { day: 12, month: 8 },
@@ -838,6 +838,7 @@ function getJob(id) {
 function Game() {
   const [game, setGame] = useState(START);
   const [screen, setScreen] = useState('home');
+  const [sleepModalVisible, setSleepModalVisible] = useState(false);
   const [marketTab, setMarketTab] = useState('phones');
   const [loaded, setLoaded] = useState(false);
   const [event, setEvent] = useState(null);
@@ -2629,7 +2630,10 @@ function Game() {
   return (
     <SafeAreaView style={styles.app}>
       <StatusBar barStyle="light-content" />
-      <TopBar game={game} />
+      <TopBar
+        game={game}
+        onSleepPress={() => setSleepModalVisible(true)}
+      />
       <View style={styles.main}>
         {screen === 'home' && <HomeScreen {...props} />}
         {screen === 'career' && <CareerScreen {...props} />}
@@ -2640,18 +2644,88 @@ function Game() {
       </View>
       <BottomNav screen={screen} setScreen={setScreen} />
       <EventModal event={event} onChoice={resolveEvent} />
+      <SleepModal
+        visible={sleepModalVisible}
+        game={game}
+        onClose={() => setSleepModalVisible(false)}
+        onSleep={(hours) => {
+          setSleepModalVisible(false);
+          sleep(hours);
+        }}
+      />
     </SafeAreaView>
   );
 }
 
-function TopBar({ game }) {
+function TopBar({ game, onSleepPress }) {
+  const headerStats = [
+    { key: 'energy', short: 'ЭН', value: game.energy, inverse: false },
+    { key: 'fatigue', short: 'УС', value: game.fatigue, inverse: true },
+    { key: 'satiety', short: 'СЫТ', value: game.satiety, inverse: false },
+    { key: 'stress', short: 'СТР', value: game.stress, inverse: true },
+    { key: 'health', short: 'ЗД', value: game.health, inverse: false },
+    { key: 'mood', short: 'НАСТ', value: game.mood, inverse: false },
+  ];
+
   return (
     <View style={styles.topBar}>
-      <View>
-        <Text style={styles.logo}>LIFE</Text>
-        <Text style={styles.topDate}>{formatDate(game.date)} · {formatTime(game.timeMinutes)}</Text>
+      <View style={styles.topBarMainRow}>
+        <View style={styles.topIdentity}>
+          <Text style={styles.logo}>LIFE</Text>
+          <Text style={styles.topDate}>
+            {formatDate(game.date)} · {formatTime(game.timeMinutes)}
+          </Text>
+        </View>
+
+        <View style={styles.topActions}>
+          <View style={styles.topMoneyBox}>
+            <Text style={styles.topMoneyLabel}>НАЛИЧНЫЕ</Text>
+            <Text style={styles.topMoney}>{money(game.cash)} ₴</Text>
+          </View>
+
+          <Pressable style={styles.sleepHeaderButton} onPress={onSleepPress}>
+            <Text style={styles.sleepHeaderIcon}>☾</Text>
+            <Text style={styles.sleepHeaderText}>Сон</Text>
+          </Pressable>
+        </View>
       </View>
-      <Text style={styles.topMoney}>{money(game.cash)} ₴</Text>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.headerStatsContent}
+        style={styles.headerStatsScroll}
+      >
+        {headerStats.map(item => (
+          <HeaderStat
+            key={item.key}
+            short={item.short}
+            value={item.value}
+            inverse={item.inverse}
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+function HeaderStat({ short, value, inverse }) {
+  const v = clamp(Math.round(value));
+  let color = C.green;
+
+  if (inverse) {
+    if (v >= 75) color = C.red;
+    else if (v >= 45) color = C.yellow;
+  } else {
+    if (v <= 30) color = C.red;
+    else if (v <= 60) color = C.yellow;
+  }
+
+  return (
+    <View style={styles.headerStat}>
+      <View style={[styles.headerStatDot, { backgroundColor: color }]} />
+      <Text style={styles.headerStatShort}>{short}</Text>
+      <Text style={styles.headerStatValue}>{v}</Text>
     </View>
   );
 }
@@ -3703,6 +3777,91 @@ function DeathScreen({ game, netWorth, resetGame }) {
   );
 }
 
+function SleepModal({ visible, game, onClose, onSleep }) {
+  const choices = [4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+  const describe = (hours) => {
+    if (hours <= 5) return 'Слишком мало: слабое восстановление и нагрузка на здоровье';
+    if (hours === 6) return 'Минимальный отдых: восстановление неполное';
+    if (hours === 7) return 'Нормальный сон';
+    if (hours === 8) return 'Оптимальное восстановление';
+    if (hours === 9) return 'Глубокое восстановление';
+    return 'Долгий сон: хорошо снимает усталость, но забирает больше времени';
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdropTap} onPress={onClose} />
+        <View style={styles.sleepModalCard}>
+          <View style={styles.sleepModalHeader}>
+            <View>
+              <Text style={styles.kicker}>СОН</Text>
+              <Text style={styles.modalTitle}>Сколько спать?</Text>
+            </View>
+            <Pressable style={styles.sleepCloseButton} onPress={onClose}>
+              <Text style={styles.sleepCloseText}>×</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.sleepCurrentState}>
+            <View style={styles.sleepStateItem}>
+              <Text style={styles.sleepStateLabel}>Сейчас</Text>
+              <Text style={styles.sleepStateValue}>{formatTime(game.timeMinutes)}</Text>
+            </View>
+            <View style={styles.sleepStateItem}>
+              <Text style={styles.sleepStateLabel}>Энергия</Text>
+              <Text style={styles.sleepStateValue}>{Math.round(game.energy)}%</Text>
+            </View>
+            <View style={styles.sleepStateItem}>
+              <Text style={styles.sleepStateLabel}>Усталость</Text>
+              <Text style={styles.sleepStateValue}>{Math.round(game.fatigue)}%</Text>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.sleepChoicesScroll}
+            contentContainerStyle={styles.sleepChoicesContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {choices.map(hours => {
+              const wakeMinutes = (game.timeMinutes + hours * 60) % 1440;
+              const nextDay = game.timeMinutes + hours * 60 >= 1440;
+
+              return (
+                <Pressable
+                  key={hours}
+                  style={styles.sleepChoiceRow}
+                  onPress={() => onSleep(hours)}
+                >
+                  <View style={styles.sleepHoursBadge}>
+                    <Text style={styles.sleepHoursBig}>{hours}</Text>
+                    <Text style={styles.sleepHoursSmall}>ч</Text>
+                  </View>
+
+                  <View style={styles.sleepChoiceBody}>
+                    <Text style={styles.sleepChoiceTitle}>
+                      Сон {hours} {hours === 4 ? 'часа' : 'часов'}
+                    </Text>
+                    <Text style={styles.sleepChoiceDescription}>
+                      {describe(hours)}
+                    </Text>
+                    <Text style={styles.sleepWakeText}>
+                      Подъём: {nextDay ? 'завтра, ' : ''}{formatTime(wakeMinutes)}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.sleepChoiceArrow}>›</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function EventModal({ event, onChoice }) {
   return (
     <Modal visible={!!event} transparent animationType="fade">
@@ -3861,18 +4020,98 @@ const styles = StyleSheet.create({
   loadingText: { color: C.sub, marginTop: 12 },
 
   topBar: {
-    minHeight: 58,
-    paddingHorizontal: 20,
-    paddingVertical: 9,
+    backgroundColor: '#0D0F12',
     borderBottomWidth: 1,
-    borderBottomColor: '#181B20',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    borderBottomColor: '#1C2026',
+    paddingTop: 8,
+    paddingBottom: 7,
   },
-  logo: { color: C.text, fontSize: 16, fontWeight: '900', letterSpacing: 3.5 },
-  topDate: { color: C.muted, fontSize: 10, marginTop: 3 },
-  topMoney: { color: C.text, fontSize: 15, fontWeight: '700' },
+  topBarMainRow: {
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  topIdentity: {
+    flex: 1,
+    minWidth: 0,
+  },
+  logo: { color: C.text, fontSize: 15, fontWeight: '900', letterSpacing: 3.2 },
+  topDate: { color: C.muted, fontSize: 9, marginTop: 3 },
+  topActions: {
+    marginLeft: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  topMoneyBox: {
+    alignItems: 'flex-end',
+  },
+  topMoneyLabel: {
+    color: C.muted,
+    fontSize: 7,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  topMoney: { color: C.text, fontSize: 14, fontWeight: '750', marginTop: 1 },
+  sleepHeaderButton: {
+    height: 38,
+    minWidth: 52,
+    paddingHorizontal: 10,
+    borderRadius: 11,
+    backgroundColor: C.surface2,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sleepHeaderIcon: {
+    color: C.accent,
+    fontSize: 14,
+    lineHeight: 14,
+  },
+  sleepHeaderText: {
+    color: C.text,
+    fontSize: 8,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  headerStatsScroll: {
+    marginTop: 7,
+  },
+  headerStatsContent: {
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  headerStat: {
+    minWidth: 57,
+    height: 29,
+    paddingHorizontal: 8,
+    borderRadius: 9,
+    backgroundColor: '#14171C',
+    borderWidth: 1,
+    borderColor: '#20242B',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerStatDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    marginRight: 5,
+  },
+  headerStatShort: {
+    color: C.muted,
+    fontSize: 7,
+    fontWeight: '800',
+    marginRight: 4,
+  },
+  headerStatValue: {
+    color: C.text,
+    fontSize: 9,
+    fontWeight: '800',
+  },
 
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 25, paddingBottom: 38 },
@@ -4079,6 +4318,123 @@ const styles = StyleSheet.create({
   navLabelActive: { color: C.text },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
+  modalBackdropTap: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sleepModalCard: {
+    maxHeight: '78%',
+    backgroundColor: '#13161B',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingTop: 20,
+    paddingHorizontal: 18,
+    paddingBottom: 24,
+  },
+  sleepModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  sleepCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.surface2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sleepCloseText: {
+    color: C.sub,
+    fontSize: 22,
+    lineHeight: 24,
+  },
+  sleepCurrentState: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  sleepStateItem: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 11,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  sleepStateLabel: {
+    color: C.muted,
+    fontSize: 8,
+  },
+  sleepStateValue: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: '750',
+    marginTop: 3,
+  },
+  sleepChoicesScroll: {
+    marginTop: 2,
+  },
+  sleepChoicesContent: {
+    paddingBottom: 8,
+  },
+  sleepChoiceRow: {
+    minHeight: 76,
+    padding: 12,
+    borderRadius: 13,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sleepHoursBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1B1F29',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sleepHoursBig: {
+    color: C.text,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  sleepHoursSmall: {
+    color: C.muted,
+    fontSize: 8,
+    marginTop: -1,
+  },
+  sleepChoiceBody: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  sleepChoiceTitle: {
+    color: C.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sleepChoiceDescription: {
+    color: C.muted,
+    fontSize: 9,
+    lineHeight: 13,
+    marginTop: 3,
+  },
+  sleepWakeText: {
+    color: C.accent,
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: 5,
+  },
+  sleepChoiceArrow: {
+    color: C.muted,
+    fontSize: 22,
+    marginLeft: 8,
+  },
   modalCard: {
     backgroundColor: '#13161B',
     borderTopLeftRadius: 24,
