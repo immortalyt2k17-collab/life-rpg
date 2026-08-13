@@ -1,2 +1,3 @@
-# life-rpg
-LIFE — mobile life simulator
+# LIFE RPG
+
+Expo Snack project for iPhone-only development.
