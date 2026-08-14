@@ -27,15 +27,32 @@ const serial=d=>Math.floor(new Date(d.year,d.month-1,d.day).getTime()/86400000);
 const uid=p=>`${p}_${Date.now()}_${Math.floor(Math.random()*99999)}`;
 
 const START={
-  version:12,date:{day:12,month:8,year:2026},timeMinutes:480,birthday:{day:12,month:8},age:18,alive:true,
+  version:13,date:{day:12,month:8,year:2026},timeMinutes:480,birthday:{day:12,month:8},age:18,alive:true,
   cash:500,bank:0,health:94,energy:86,fatigue:12,satiety:72,mood:74,stress:8,fitness:42,
   intelligence:8,charisma:8,professionalSkill:0,reputation:2,
   hidden:{familyBond:60,socialTrust:50,careerTrust:50,empathy:50,reliability:52,burnout:0,longTermHealth:92,loneliness:10,lifeStress:5,creditTrust:48,financialDiscipline:50,nutritionHistory:65,sleepHistory:70},
   career:{companyId:null,roleId:null,companyMonths:0,roleMonths:0,workDaysMonth:0,workedToday:false,excusedToday:false,attendance:{absences:0,late:0,warnings:0,perfectMonths:0,streak:0}},
   familyMealsToday:0,sideGigDoneToday:{},
   phoneId:'samsung_s3',phoneCondition:55,cars:[],activeCarId:null,housingId:'parents',properties:[],businesses:[],
+  healthSystem:{
+    conditions:[],
+    diagnosed:[],
+    lastCheckupDay:-120,
+    lastDoctorVisitDay:-120,
+    medicineSpent:0,
+    clinicSpent:0,
+    treatmentQuality:50
+  },
+  habits:{
+    smoking:0,
+    alcohol:0,
+    cigarettesToday:0,
+    alcoholToday:0,
+    smokingDays:0,
+    drinkingDays:0
+  },
   debts:[],investmentPortfolio:{marketValue:0,lastMonthReturn:0},
-  monthly:{salary:0,business:0,investments:0,housing:0,food:0,transport:0,sideGigs:0,familySupport:0},
+  monthly:{salary:0,business:0,investments:0,housing:0,food:0,transport:0,sideGigs:0,familySupport:0,healthcare:0,rentIncome:0,assetCosts:0},
   stats:{daysLived:1,totalEarned:0,totalSpent:0,jobsHeld:0,eventsSeen:0,sideGigEarned:0,familySupportValue:0},
   relatives:{mother:{name:'Мама',alive:true,age:43,relationship:75,health:88},father:{name:'Отец',alive:true,age:45,relationship:70,health:84},grandmother:{name:'Бабушка',alive:true,age:66,relationship:66,health:68}},
   memories:[],eventHistory:[],pendingEventId:null,lastEventDay:-10
@@ -122,6 +139,42 @@ const BUSINESSES=[
  ['grocery','Продуктовый магазин',2400000,16000,.71],['delivery','Служба доставки',2900000,18500,.68],['sto','Полноценное СТО',4200000,29000,.63],
  ['restaurant','Ресторан',6500000,38000,.70],['dealer','Автосалон подержанных авто',11500000,72000,.78],['logistics','Логистическая компания',18500000,125000,.81]
 ].map(x=>({id:x[0],name:x[1],price:x[2],daily:x[3],expenseRate:x[4]}));
+
+
+const DISEASES=[
+ {id:'cold',name:'Простуда',type:'acute',severity:1,baseChance:.0038,duration:5,health:-.15,energy:-2,stress:.4,gov:150,private:900,meds:380},
+ {id:'flu',name:'Грипп',type:'acute',severity:2,baseChance:.0014,duration:8,health:-.35,energy:-4,stress:.8,gov:250,private:1400,meds:850},
+ {id:'covid',name:'COVID-подобная вирусная инфекция',type:'acute',severity:2,baseChance:.0007,duration:10,health:-.28,energy:-4,stress:1,gov:250,private:1600,meds:900},
+ {id:'bronchitis',name:'Бронхит',type:'acute',severity:2,baseChance:.0008,duration:12,health:-.32,energy:-3,stress:.8,gov:300,private:1800,meds:1200,smoking:1.9},
+ {id:'pneumonia',name:'Пневмония',type:'acute',severity:4,baseChance:.00022,duration:18,health:-.85,energy:-6,stress:1.5,gov:700,private:5200,meds:4800,smoking:1.6},
+ {id:'migraine',name:'Мигрень',type:'episodic',severity:2,baseChance:.0011,duration:2,health:-.05,energy:-4,stress:2,gov:250,private:1400,meds:500,stressRisk:1.8},
+ {id:'gastritis',name:'Гастрит',type:'chronic',severity:2,baseChance:.00045,duration:45,health:-.12,energy:-1,stress:.5,gov:350,private:1900,meds:1800,badFood:1.8,alcohol:1.5},
+ {id:'hypertension',name:'Гипертония',type:'chronic',severity:3,baseChance:.00018,duration:9999,health:-.10,energy:-1,stress:.7,gov:400,private:2300,meds:1200,ageRisk:1.8,smoking:1.7,alcohol:1.3},
+ {id:'diabetes2',name:'Сахарный диабет 2 типа',type:'chronic',severity:3,baseChance:.00008,duration:9999,health:-.12,energy:-1,stress:.6,gov:500,private:3000,meds:1800,ageRisk:2.0,badFood:1.5},
+ {id:'asthma',name:'Бронхиальная астма',type:'chronic',severity:3,baseChance:.00009,duration:9999,health:-.08,energy:-1,stress:.5,gov:450,private:2600,meds:1600,smoking:1.6},
+ {id:'depression',name:'Депрессивное расстройство',type:'chronic',severity:3,baseChance:.00018,duration:120,health:-.05,energy:-2,stress:1.2,gov:350,private:2800,meds:2200,stressRisk:2.0},
+ {id:'back_pain',name:'Хроническая боль в спине',type:'chronic',severity:2,baseChance:.00028,duration:90,health:-.07,energy:-1,stress:.5,gov:300,private:1800,meds:900,ageRisk:1.5},
+ {id:'ulcer',name:'Язвенная болезнь',type:'chronic',severity:3,baseChance:.00008,duration:70,health:-.22,energy:-1,stress:.8,gov:500,private:3000,meds:2600,badFood:1.7,alcohol:1.7},
+ {id:'liver_disease',name:'Хроническое заболевание печени',type:'chronic',severity:4,baseChance:.000025,duration:9999,health:-.25,energy:-2,stress:.9,gov:900,private:6000,meds:4200,alcohol:3.0},
+ {id:'copd',name:'ХОБЛ',type:'chronic',severity:4,baseChance:.00002,duration:9999,health:-.28,energy:-3,stress:1,gov:900,private:5500,meds:3500,smoking:4.0,ageRisk:1.7},
+ {id:'heart_disease',name:'Ишемическая болезнь сердца',type:'chronic',severity:5,baseChance:.000018,duration:9999,health:-.32,energy:-2,stress:1.2,gov:1200,private:8500,meds:5000,smoking:2.4,ageRisk:2.7},
+ {id:'stroke',name:'Инсульт',type:'critical',severity:5,baseChance:.000004,duration:50,health:-1.6,energy:-7,stress:2,gov:3000,private:18000,meds:12000,smoking:2.0,ageRisk:3.0},
+ {id:'cancer',name:'Онкологическое заболевание',type:'critical',severity:5,baseChance:.000008,duration:260,health:-.6,energy:-3,stress:1.8,gov:7000,private:45000,meds:25000,smoking:2.2,ageRisk:2.8}
+];
+
+const diseaseById=id=>DISEASES.find(x=>x.id===id)||null;
+
+function diseaseRisk(game,d){
+  let r=d.baseChance;
+  if(d.ageRisk)r*=1+Math.max(0,game.age-35)/25*(d.ageRisk-1);
+  if(d.smoking)r*=1+(game.habits?.smoking||0)/100*(d.smoking-1);
+  if(d.alcohol)r*=1+(game.habits?.alcohol||0)/100*(d.alcohol-1);
+  if(d.stressRisk)r*=1+(game.stress/100)*(d.stressRisk-1);
+  if(d.badFood)r*=1+((100-(game.hidden?.nutritionHistory||50))/100)*(d.badFood-1);
+  if(game.health<45)r*=1.35;
+  if(game.hidden?.longTermHealth<50)r*=1.35;
+  return r;
+}
 
 
 const EVENTS={
@@ -238,7 +291,7 @@ const directText=d=>{const a=[];if(d?.cash)a.push(`${d.cash<0?'−':'+'}${money(
 
 function mergeSave(s){
  if(!s)return START;
- const g={...START,...s,hidden:{...START.hidden,...(s.hidden||{})},career:{...START.career,...(s.career||{}),attendance:{...START.career.attendance,...(s.career?.attendance||{})}},monthly:{...START.monthly,...(s.monthly||{})},stats:{...START.stats,...(s.stats||{})},relatives:{...START.relatives,...(s.relatives||{})},investmentPortfolio:{...START.investmentPortfolio,...(s.investmentPortfolio||{})}};
+ const g={...START,...s,hidden:{...START.hidden,...(s.hidden||{})},career:{...START.career,...(s.career||{}),attendance:{...START.career.attendance,...(s.career?.attendance||{})}},monthly:{...START.monthly,...(s.monthly||{})},stats:{...START.stats,...(s.stats||{})},relatives:{...START.relatives,...(s.relatives||{})},investmentPortfolio:{...START.investmentPortfolio,...(s.investmentPortfolio||{})},healthSystem:{...START.healthSystem,...(s.healthSystem||{}),conditions:[...((s.healthSystem?.conditions)||[])],diagnosed:[...((s.healthSystem?.diagnosed)||[])]},habits:{...START.habits,...(s.habits||{})},cars:[...(s.cars||[])].map(x=>({rented:false,upgrade:0,...x})),properties:[...(s.properties||[])].map(x=>({rented:false,condition:100,comfortUpgrade:0,...x})),businesses:[...(s.businesses||[])].map(x=>({condition:100,...x}))};
  if(!g.career.companyId&&s.jobId){const m={courier:['nova','np1'],seller:['atb','atb1'],operator:['kyivstar','ks1'],sales_manager:['rozetka','rz3'],senior_manager:['rozetka','rz4'],director:['rozetka','rz4']}[s.jobId];if(m){g.career.companyId=m[0];g.career.roleId=m[1];}}
  if(!s.investmentPortfolio&&typeof s.investments==='number')g.investmentPortfolio={marketValue:s.investments,lastMonthReturn:0};
  return g;
@@ -294,6 +347,50 @@ function App(){
   return {...g,pendingEventId:e.id,lastEventDay:g.stats.daysLived,eventHistory:[...(g.eventHistory||[]),e.id].slice(-30),stats:{...g.stats,eventsSeen:g.stats.eventsSeen+1}};
  };
 
+
+ const processHealthDaily=g=>{
+  let ng={...g,habits:{...START.habits,...(g.habits||{}),cigarettesToday:0,alcoholToday:0},healthSystem:{...START.healthSystem,...(g.healthSystem||{})}};
+  const today=ng.stats.daysLived;
+
+  // Existing diseases progress every day. Treatment makes recovery faster.
+  const nextConditions=[];
+  for(const c of (ng.healthSystem.conditions||[])){
+    const d=diseaseById(c.id);if(!d)continue;
+    const treated=!!c.treated;
+    const factor=treated?.42:1;
+    ng=apply(ng,{health:d.health*factor,energy:d.energy*factor,stress:d.stress*factor});
+    const elapsed=(c.elapsed||0)+1;
+    const recoveryTarget=treated?Math.max(2,Math.round(d.duration*.62)):d.duration;
+    if(d.type==='chronic' || d.duration>1000 || elapsed<recoveryTarget){
+      nextConditions.push({...c,elapsed});
+    }else{
+      ng.memories=[...ng.memories,{date:formatDate(ng.date),age:ng.age,text:`Выздоровел: ${d.name}`}].slice(-100);
+    }
+  }
+  ng.healthSystem={...ng.healthSystem,conditions:nextConditions};
+
+  // Lifestyle consequences.
+  const sm=ng.habits.smoking||0, al=ng.habits.alcohol||0;
+  if(sm>0)ng=apply(ng,{longTermHealth:-sm*.0015,health:-sm*.0007,fitness:-sm*.0004});
+  if(al>0)ng=apply(ng,{longTermHealth:-al*.0012,health:-al*.0005,sleepHistory:-al*.001});
+  if(sm>55)ng.stress=clamp(ng.stress+0.08);
+  if(al>60)ng.mood=clamp(ng.mood-0.05);
+
+  // New disease onset. Usually no more than one new diagnosis per day.
+  if((ng.healthSystem.conditions||[]).length<4){
+    const active=new Set((ng.healthSystem.conditions||[]).map(x=>x.id));
+    const pool=DISEASES.filter(d=>!active.has(d.id));
+    for(const d of pool){
+      if(Math.random()<diseaseRisk(ng,d)){
+        ng.healthSystem={...ng.healthSystem,conditions:[...ng.healthSystem.conditions,{id:d.id,elapsed:0,diagnosed:false,treated:false,onsetDay:today}]};
+        ng.memories=[...ng.memories,{date:formatDate(ng.date),age:ng.age,text:`Появились симптомы: ${d.name}`}].slice(-100);
+        break;
+      }
+    }
+  }
+  return ng;
+ };
+
  const processDebts=g=>{
   const today=serial(g.date);let ng={...g};
   ng.debts=g.debts.map(d=>{if(d.status!=='active')return d;let x={...d};if(x.kind==='micro'){const i=Math.round(x.balance*(x.dailyRate||.012));x.balance+=i;}if(today>x.dueSerial&&!x.lateMarked){x.lateMarked=true;ng=apply(ng,{creditTrust:-7,financialDiscipline:-6,stress:5,familyBond:x.lender==='mother'?-5:0,careerTrust:x.lender==='coworker'?-5:0});}return x;});
@@ -308,7 +405,13 @@ function App(){
   ng.cash+=biz;
   if(g.investmentPortfolio.marketValue>0){inv=Math.round(g.investmentPortfolio.marketValue*((Math.random()*.10)-.035));ng.investmentPortfolio={...g.investmentPortfolio,marketValue:Math.max(0,g.investmentPortfolio.marketValue+inv),lastMonthReturn:inv};}
   if(h.type==='family'){const contribution=r?Math.min(6000,Math.round(r.salary*.08)):0;expenses+=contribution;ng.stats={...ng.stats,familySupportValue:ng.stats.familySupportValue+Math.max(0,5000-contribution)};}else expenses+=h.monthly;
-  if(car)expenses+=car.monthly;if(p)expenses+=p.monthly;ng.cash-=expenses;
+  if(car)expenses+=car.monthly;if(p)expenses+=p.monthly;
+  let rentIncome=0;
+  ng.properties=(ng.properties||[]).map(o=>{if(!o.rented)return o;const h=housingById(o.catalogId);if(!h||!h.price)return o;const income=Math.round(h.price*.0032*(.9+Math.random()*.2));rentIncome+=income;return{...o,condition:clamp((o.condition||100)-.5,25,100)};});
+  ng.cars=(ng.cars||[]).map(o=>{if(!o.rented)return o;const b=carById(o.catalogId);if(!b)return o;const income=Math.round(b.price*.012*(.9+Math.random()*.2));rentIncome+=income;return{...o,condition:clamp((o.condition||100)-1.4,15,100),mileage:(o.mileage||0)+900};});
+  ng.cash+=rentIncome;
+  ng.monthly={...ng.monthly,rentIncome:(ng.monthly.rentIncome||0)+rentIncome};
+  ng.cash-=expenses;
   ng.career={...ng.career,companyMonths:r?ng.career.companyMonths+1:0,roleMonths:r?ng.career.roleMonths+1:0,workDaysMonth:0,attendance:{...ng.career.attendance,perfectMonths:ng.career.attendance.perfectMonths+(r&&ng.career.attendance.absences===0?1:0)}};
   ng.monthly={...ng.monthly,salary,business:biz,investments:inv,housing:h.type==='family'?0:h.monthly,transport:car?car.monthly:0};
   ng.stats={...ng.stats,totalEarned:ng.stats.totalEarned+salary+biz+Math.max(0,inv),totalSpent:ng.stats.totalSpent+expenses};
@@ -347,7 +450,7 @@ function App(){
   if(ng.satiety<20)ng=apply(ng,{health:-.7,longTermHealth:-.18,nutritionHistory:-.3});
   if(ng.fatigue>78)ng=apply(ng,{health:-.35,longTermHealth:-.12,burnout:.25});
   if(ng.stress>78)ng=apply(ng,{health:-.25,lifeStress:.22,burnout:.2});
-  ng=processDebts(ng);if(nd.day===1)ng=processMonth(ng);ng=mortality(ng);return ng.alive?eventify(ng):ng;
+  ng=processDebts(ng);ng=processHealthDaily(ng);if(nd.day===1)ng=processMonth(ng);ng=mortality(ng);return ng.alive?eventify(ng):ng;
  };
 
  const advance=(g,minutes)=>{
@@ -357,7 +460,7 @@ function App(){
  };
 
  const workPure=g=>{
-  const r=roleByIds(g.career.companyId,g.career.roleId);if(!r)return g;const tr=commute(g),need=22+tr.energy*2;
+  const r=roleByIds(g.career.companyId,g.career.roleId);if(!r)return g;const tr=commute(g),illnessPenalty=(g.healthSystem?.conditions||[]).reduce((s,c)=>s+(diseaseById(c.id)?.severity||0)*1.5,0),need=22+tr.energy*2+illnessPenalty;
   if(g.energy<need||g.fatigue>91||g.satiety<10)return g;
   let ng={...g,cash:g.cash-tr.cash*2,career:{...g.career,workedToday:true,workDaysMonth:g.career.workDaysMonth+1,attendance:{...g.career.attendance,streak:g.career.attendance.streak+1}}};
   ng=apply(ng,{energy:-need,fatigue:18,satiety:-12,stress:8+tr.stress,skill:.35*(g.fatigue>70?.6:1)*(phonePerf(g)<15?.8:1),charisma:['Ритейл','Телеком','Банк'].includes(companyById(g.career.companyId)?.sector)?.04:.015,reputation:.08,careerTrust:.12});
@@ -366,7 +469,7 @@ function App(){
   return advance(ng,r.hours*60+tr.minutes*2);
  };
 
- const doWork=()=>{if(!role)return Alert.alert('Работа','Сначала выбери компанию и должность.');if(!scheduled(game))return Alert.alert('Выходной','Сегодня по графику нет смены.');if(game.career.workedToday)return Alert.alert('Работа','Смена уже отработана.');if(game.energy<30||game.satiety<10)return Alert.alert('Не хватает сил','Сначала поешь или отдохни.');patch(workPure);};
+ const doWork=()=>{if(!role)return Alert.alert('Работа','Сначала выбери компанию и должность.');if(!scheduled(game))return Alert.alert('Выходной','Сегодня по графику нет смены.');if(game.career.workedToday)return Alert.alert('Работа','Смена уже отработана.');const critical=(game.healthSystem?.conditions||[]).some(c=>(diseaseById(c.id)?.severity||0)>=5);if(critical&&game.health<45)return Alert.alert('Состояние здоровья','Персонаж слишком плохо себя чувствует для обычной смены. Сначала обратись к врачу.');if(game.energy<30||game.satiety<10)return Alert.alert('Не хватает сил','Сначала поешь или отдохни.');patch(workPure);};
 
  const eat=k=>{const o={cheap:[120,29,0,-.15,25],normal:[280,46,2,.12,40],good:[650,58,5,.3,60]}[k];if(game.cash<o[0])return Alert.alert('Недостаточно денег');patch(g=>advance(apply({...g,cash:g.cash-o[0],monthly:{...g.monthly,food:g.monthly.food+o[0]},stats:{...g.stats,totalSpent:g.stats.totalSpent+o[0]}},{satiety:o[1],mood:o[2],nutritionHistory:o[3]}),o[4]));};
 
@@ -407,12 +510,81 @@ function App(){
  const autoDay=g=>{let n={...g};if(scheduled(n)&&!n.career.workedToday){const r=roleByIds(n.career.companyId,n.career.roleId);if(r&&n.energy>=35&&n.satiety>=15&&n.fatigue<86){if(n.satiety<45){if(n.housingId==='parents'&&n.relatives.mother?.alive)n=apply(n,{satiety:46});else if(n.cash>=280)n=apply({...n,cash:n.cash-280},{satiety:46});}n=workPure(n);}}if(n.pendingEventId)return n;if(n.satiety<40){if(n.housingId==='parents'&&n.relatives.mother?.alive)n=apply(n,{satiety:46});else if(n.cash>=280)n=apply({...n,cash:n.cash-280},{satiety:46});}if(n.pendingEventId)return n;const till=((1320-n.timeMinutes)+1440)%1440;if(till>0&&till<720)n=advance(n,till);if(n.pendingEventId)return n;n=apply(n,{energy:70,fatigue:-62,stress:-7,mood:1,longTermHealth:.05,sleepHistory:.1});return advance(n,480);};
  const ff=mode=>patch(g=>{let n={...g},max=mode==='day'?1:mode==='week'?7:30;for(let i=0;i<max;i++){if(n.pendingEventId)break;n=autoDay(n);if(n.pendingEventId)break;if(mode==='event'){n=eventify(n,i>=2);if(n.pendingEventId)break;}}return n;});
 
+
+ const visitDoctor=kind=>{
+  const active=(game.healthSystem?.conditions||[]);
+  const serious=active.reduce((m,c)=>Math.max(m,diseaseById(c.id)?.severity||1),1);
+  const cost=kind==='private'?Math.round(1200+serious*900):Math.round(100+serious*120);
+  const minutes=kind==='private'?90:Math.round(180+Math.random()*180);
+  if(game.cash<cost)return Alert.alert('Недостаточно денег');
+  patch(g=>{
+    let n={...g,cash:g.cash-cost,healthSystem:{...g.healthSystem,lastDoctorVisitDay:g.stats.daysLived,clinicSpent:(g.healthSystem.clinicSpent||0)+cost,diagnosed:[...new Set([...(g.healthSystem.diagnosed||[]),...(g.healthSystem.conditions||[]).map(x=>x.id)])],conditions:(g.healthSystem.conditions||[]).map(x=>({...x,diagnosed:true}))},monthly:{...g.monthly,healthcare:(g.monthly.healthcare||0)+cost},stats:{...g.stats,totalSpent:g.stats.totalSpent+cost}};
+    n=apply(n,{stress:kind==='private'?-2:0});
+    return advance(n,minutes);
+  });
+ };
+
+ const buyTreatment=id=>{
+  const d=diseaseById(id);if(!d)return;
+  const condition=(game.healthSystem.conditions||[]).find(x=>x.id===id);if(!condition)return;
+  if(!condition.diagnosed)return Alert.alert('Сначала нужен врач','Без диагноза лечение недоступно.');
+  const cost=d.meds;
+  if(game.cash<cost)return Alert.alert('Недостаточно денег');
+  patch(g=>({...g,cash:g.cash-cost,healthSystem:{...g.healthSystem,medicineSpent:(g.healthSystem.medicineSpent||0)+cost,conditions:g.healthSystem.conditions.map(x=>x.id===id?{...x,treated:true}:x)},monthly:{...g.monthly,healthcare:(g.monthly.healthcare||0)+cost},stats:{...g.stats,totalSpent:g.stats.totalSpent+cost},memories:[...g.memories,{date:formatDate(g.date),age:g.age,text:`Начал назначенное лечение: ${d.name}`}].slice(-100)}));
+ };
+
+ const preventiveCheck=kind=>{
+  const cost=kind==='private'?4200:650;
+  if(game.cash<cost)return Alert.alert('Недостаточно денег');
+  patch(g=>{let n={...g,cash:g.cash-cost,healthSystem:{...g.healthSystem,lastCheckupDay:g.stats.daysLived,clinicSpent:(g.healthSystem.clinicSpent||0)+cost},monthly:{...g.monthly,healthcare:(g.monthly.healthcare||0)+cost},stats:{...g.stats,totalSpent:g.stats.totalSpent+cost}};n=apply(n,{longTermHealth:.4,stress:kind==='private'?-1:0});return advance(n,kind==='private'?120:300);});
+ };
+
+ const smoke=()=>{
+  if(game.cash<25)return Alert.alert('Недостаточно денег');
+  patch(g=>{let n=apply({...g,cash:g.cash-25,fitness:clamp(g.fitness-.04),habits:{...g.habits,smoking:clamp((g.habits.smoking||0)+.35),cigarettesToday:(g.habits.cigarettesToday||0)+1,smokingDays:(g.habits.smokingDays||0)+1}},{mood:1.2,stress:-2.2,longTermHealth:-.12});return advance(n,8);});
+ };
+
+ const drink=heavy=>{
+  const cost=heavy?450:140;if(game.cash<cost)return Alert.alert('Недостаточно денег');
+  patch(g=>advance(apply({...g,cash:g.cash-cost,habits:{...g.habits,alcohol:clamp((g.habits.alcohol||0)+(heavy?.8:.25)),alcoholToday:(g.habits.alcoholToday||0)+1,drinkingDays:(g.habits.drinkingDays||0)+1}},{mood:heavy?5:2,stress:heavy?-6:-3,health:heavy?-.7:-.15,longTermHealth:heavy?-.3:-.08,sleepHistory:heavy?-.5:-.15}),heavy?180:60));
+ };
+
+ const quitHabit=kind=>{
+  patch(g=>({...g,habits:{...g.habits,[kind]:Math.max(0,(g.habits[kind]||0)-5)},stress:clamp(g.stress+3),mood:clamp(g.mood-2)}));
+ };
+
+ const propertyAction=(o,action)=>{
+  const h=housingById(o.catalogId);if(!h)return;
+  if(action==='clean'){patch(g=>advance(apply({...g,properties:g.properties.map(x=>x.uid===o.uid?{...x,condition:clamp((x.condition||100)+2)}:x)},{energy:-8,mood:2}),120));return;}
+  if(action==='repair'){const cost=Math.max(8000,Math.round(h.price*.012));if(game.cash<cost)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-cost,properties:g.properties.map(x=>x.uid===o.uid?{...x,condition:clamp((x.condition||100)+25)}:x),monthly:{...g.monthly,assetCosts:(g.monthly.assetCosts||0)+cost}}));return;}
+  if(action==='renovate'){const cost=Math.max(40000,Math.round(h.price*.045));if(game.cash<cost)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-cost,properties:g.properties.map(x=>x.uid===o.uid?{...x,condition:100,comfortUpgrade:clamp((x.comfortUpgrade||0)+10,0,30)}:x),mood:clamp(g.mood+5),monthly:{...g.monthly,assetCosts:(g.monthly.assetCosts||0)+cost}}));return;}
+  if(action==='rent'){patch(g=>({...g,properties:g.properties.map(x=>x.uid===o.uid?{...x,rented:!x.rented}:x),housingId:g.housingId===o.catalogId?(g.relatives.mother?.alive?'parents':'homeless'):g.housingId}));}
+ };
+
+ const carAction=(o,action)=>{
+  const b=carById(o.catalogId);if(!b)return;
+  if(action==='repair'){const missing=100-(o.condition||100),cost=Math.max(1800,Math.round(b.price*(missing/100)*.045));if(game.cash<cost)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-cost,cars:g.cars.map(x=>x.uid===o.uid?{...x,condition:clamp((x.condition||100)+35)}:x),monthly:{...g.monthly,assetCosts:(g.monthly.assetCosts||0)+cost}}));return;}
+  if(action==='service'){const cost=Math.max(1200,Math.round(b.price*.006));if(game.cash<cost)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-cost,cars:g.cars.map(x=>x.uid===o.uid?{...x,condition:clamp((x.condition||100)+12)}:x),monthly:{...g.monthly,assetCosts:(g.monthly.assetCosts||0)+cost}}));return;}
+  if(action==='upgrade'){const cost=Math.max(5000,Math.round(b.price*.018));if(game.cash<cost)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-cost,cars:g.cars.map(x=>x.uid===o.uid?{...x,upgrade:clamp((x.upgrade||0)+8,0,40)}:x),mood:clamp(g.mood+3),monthly:{...g.monthly,assetCosts:(g.monthly.assetCosts||0)+cost}}));return;}
+  if(action==='friends'){if((o.condition||100)<35)return Alert.alert('Машина требует ремонта');const cost=650;if(game.cash<cost)return Alert.alert('Недостаточно денег');patch(g=>advance(apply({...g,cash:g.cash-cost,cars:g.cars.map(x=>x.uid===o.uid?{...x,mileage:(x.mileage||0)+85,condition:clamp((x.condition||100)-.25)}:x)},{mood:8,socialTrust:3,energy:-7,stress:-4}),240));return;}
+  if(action==='rent'){patch(g=>({...g,cars:g.cars.map(x=>x.uid===o.uid?{...x,rented:!x.rented}:x),activeCarId:g.activeCarId===o.uid?null:g.activeCarId}));}
+ };
+
+ const phoneAction=action=>{
+  const p=phoneById(game.phoneId);if(!p)return;
+  if(action==='repair'){const cost=Math.max(500,Math.round(p.price*(100-game.phoneCondition)/100*.12));if(game.cash<cost)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-cost,phoneCondition:clamp(g.phoneCondition+45),monthly:{...g.monthly,assetCosts:(g.monthly.assetCosts||0)+cost}}));return;}
+  if(action==='family'){patch(g=>advance(apply(g,{familyBond:2.5,mood:2,stress:-1}),35));return;}
+  if(action==='learn'){patch(g=>advance(apply(g,{intelligence:.25,energy:-5,fatigue:3}),60));return;}
+  if(action==='network'){patch(g=>advance(apply(g,{charisma:.18,socialTrust:.6,energy:-3}),45));return;}
+  if(action==='photo'){patch(g=>advance(apply(g,{mood:3,charisma:p.prestige/700,energy:-2}),40));}
+ };
+
  const reset=()=>Alert.alert('Начать новую жизнь?','Весь прогресс будет удалён.',[{text:'Отмена'},{text:'Удалить',style:'destructive',onPress:async()=>{await AsyncStorage.removeItem(SAVE_KEY);setGame(START);setScreen('today');}}]);
 
  if(!loaded)return <View style={styles.loading}><ActivityIndicator/><Text style={styles.loadingText}>Загрузка…</Text></View>;
  if(!game.alive)return <SafeAreaView style={styles.app}><StatusBar barStyle="light-content"/><ScrollView contentContainerStyle={styles.content}><Text style={styles.kicker}>ЖИЗНЬ ЗАВЕРШЕНА</Text><Text style={[styles.hero,{fontSize:64,marginTop:20}]}>{game.age}</Text><Text style={styles.sub}>лет · {game.causeOfDeath||'естественные причины'}</Text><Section title="Итог"/><View style={styles.bigCard}><Row l1="Прожито дней" v1={`${game.stats.daysLived}`} l2="Капитал" v2={`${money(capital)} ₴`}/><View style={styles.divider}/><Text style={styles.small}>Решения, здоровье, стресс, питание, сон и качество жизни влияли на продолжительность жизни персонажа.</Text></View><Pressable style={styles.buy} onPress={reset}><Text style={styles.buyText}>Начать новую жизнь</Text></Pressable></ScrollView></SafeAreaView>;
 
- const common={game,company,role,phone,housing,capital,doWork,eat,eatHome,sleep,study,workout,gigOK,doGig,roleOK,join,quit,buyPhone,sellPhone,buyCar,sellCar,chooseHousing,sellProp,buyBiz,sellBiz,borrow,repay,invest,marketTab,setMarketTab,patch,ff,reset};
+ const common={game,company,role,phone,housing,capital,doWork,eat,eatHome,sleep,study,workout,gigOK,doGig,roleOK,join,quit,buyPhone,sellPhone,buyCar,sellCar,chooseHousing,sellProp,buyBiz,sellBiz,borrow,repay,invest,marketTab,setMarketTab,patch,ff,visitDoctor,buyTreatment,preventiveCheck,smoke,drink,quitHabit,propertyAction,carAction,phoneAction,reset};
 
  return <SafeAreaView style={styles.app}>
   <StatusBar barStyle="light-content"/>
@@ -421,6 +593,7 @@ function App(){
    {screen==='today'&&<Today {...common}/>}
    {screen==='career'&&<Career {...common}/>}
    {screen==='finance'&&<Finance {...common}/>}
+   {screen==='health'&&<Health {...common}/>}
    {screen==='market'&&<Market {...common}/>}
    {screen==='assets'&&<Assets {...common}/>}
   </View>
@@ -492,6 +665,38 @@ function Finance({game,role,borrow,repay,invest,capital}){
  </ScrollView>;
 }
 
+
+function Health({game,visitDoctor,buyTreatment,preventiveCheck,smoke,drink,quitHabit}){
+ const conditions=(game.healthSystem?.conditions||[]);
+ const smoking=Math.round(game.habits?.smoking||0),alcohol=Math.round(game.habits?.alcohol||0);
+ return <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  <Text style={styles.kicker}>ЗДОРОВЬЕ</Text><Text style={styles.hero}>Организм</Text>
+  <Text style={styles.sub}>Игровая модель здоровья: болезни зависят от возраста, сна, питания, стресса и вредных привычек.</Text>
+
+  <View style={styles.bigCard}><Text style={styles.caption}>ОБЩЕЕ СОСТОЯНИЕ</Text><Text style={styles.bigMoney}>{Math.round(game.health)}%</Text><View style={styles.divider}/><Row l1="Долгосрочное здоровье" v1={`${Math.round(game.hidden.longTermHealth)}%`} l2="Активных состояний" v2={`${conditions.length}`}/></View>
+
+  <Section title="Медицина" right="государственная или частная"/>
+  <Action title="Государственная больница" sub="Дешевле, но обычно дольше ожидание" meta="от 220 ₴" onPress={()=>visitDoctor('gov')}/>
+  <Action title="Частная клиника" sub="Быстрее и комфортнее, но значительно дороже" meta="от 2 100 ₴" onPress={()=>visitDoctor('private')}/>
+  <View style={styles.miniRow}><Mini title="Профосмотр" value="Гос · 650 ₴" onPress={()=>preventiveCheck('gov')}/><Mini title="Check-up" value="Частный · 4 200 ₴" onPress={()=>preventiveCheck('private')}/></View>
+
+  <Section title="Состояния и болезни" right={`${conditions.length}`}/>
+  {!conditions.length&&<Empty text="Сейчас выраженных заболеваний не обнаружено."/>}
+  {conditions.map(c=>{const d=diseaseById(c.id);if(!d)return null;return <View key={c.id} style={styles.product}>
+    <View style={styles.row}><View style={{flex:1}}><Text style={styles.caption}>{d.type==='critical'?'ТЯЖЁЛОЕ СОСТОЯНИЕ':d.type==='chronic'?'ХРОНИЧЕСКОЕ':'ЗАБОЛЕВАНИЕ'}</Text><Text style={styles.cardTitle}>{c.diagnosed?d.name:'Неуточнённые симптомы'}</Text></View><Text style={[styles.state,{color:d.severity>=4?C.red:d.severity>=2?C.yellow:C.green}]}>ТЯЖЕСТЬ {d.severity}/5</Text></View>
+    <Text style={styles.small}>{c.diagnosed?`Диагноз подтверждён · ${c.treated?'лечение начато':'лечение не начато'}`:'Нужен осмотр врача для диагноза'}</Text>
+    {c.diagnosed&&!c.treated&&<Pressable style={styles.buy} onPress={()=>buyTreatment(c.id)}><Text style={styles.buyText}>Купить назначенные лекарства · {money(d.meds)} ₴</Text></Pressable>}
+  </View>;})}
+
+  <Section title="Вредные привычки"/>
+  <View style={styles.product}><Text style={styles.cardTitle}>Курение</Text><Text style={styles.small}>Зависимость: {smoking}% · повышает долгосрочные риски болезней и ухудшает форму.</Text><View style={styles.buttons}><Btn text="Покурить · 25 ₴" onPress={smoke}/><Btn text="Снижать привычку" onPress={()=>quitHabit('smoking')}/></View></View>
+  <View style={styles.product}><Text style={styles.cardTitle}>Алкоголь</Text><Text style={styles.small}>Привычка: {alcohol}% · влияет на сон, печень, настроение и здоровье.</Text><View style={styles.buttons}><Btn text="Немного · 140 ₴" onPress={()=>drink(false)}/><Btn text="Вечеринка · 450 ₴" onPress={()=>drink(true)}/><Btn text="Снижать" onPress={()=>quitHabit('alcohol')}/></View></View>
+
+  <Section title="Расходы на здоровье"/>
+  <View style={styles.bigCard}><Row l1="Клиники" v1={`${money(game.healthSystem?.clinicSpent||0)} ₴`} l2="Лекарства" v2={`${money(game.healthSystem?.medicineSpent||0)} ₴`}/></View>
+ </ScrollView>;
+}
+
 function Market({game,buyPhone,buyCar,chooseHousing,buyBiz,marketTab,setMarketTab}){
  return <View style={{flex:1}}><View style={styles.tabs}>{[['phones','Техника'],['cars','Авто'],['housing','Жильё'],['business','Бизнес']].map(([id,t])=><Pressable key={id} onPress={()=>setMarketTab(id)} style={[styles.tab,marketTab===id&&styles.tabActive]}><Text style={[styles.tabText,marketTab===id&&{color:C.text}]}>{t}</Text></Pressable>)}</View>
   <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -503,12 +708,12 @@ function Market({game,buyPhone,buyCar,chooseHousing,buyBiz,marketTab,setMarketTa
  </View>;
 }
 
-function Assets({game,phone,housing,capital,sellPhone,sellCar,sellProp,sellBiz,patch,reset}){
+function Assets({game,phone,housing,capital,sellPhone,sellCar,sellProp,sellBiz,patch,phoneAction,carAction,propertyAction,reset}){
  return <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
   <Text style={styles.kicker}>АКТИВЫ</Text><Text style={styles.hero}>{money(capital)} ₴</Text><Text style={styles.sub}>Имущество можно продать даже если оно единственное.</Text>
-  <Section title="Телефон"/>{phone?<View style={styles.bigCard}><Text style={styles.caption}>{phone.brand}</Text><Text style={styles.cardTitle}>{phone.model}</Text><Text style={styles.small}>Состояние {Math.round(game.phoneCondition)}% · эффективность {Math.round(phonePerf(game))}</Text><Pressable onPress={sellPhone}><Text style={styles.dangerText}>Продать телефон</Text></Pressable></View>:<Empty text="Телефона нет. Часть функций недоступна."/>}
-  <Section title="Автомобили"/>{!game.cars.length&&<Empty text="Автомобилей нет."/>}{game.cars.map(o=>{const b=carById(o.catalogId);if(!b)return <View key={o.uid} style={styles.product}><Text style={styles.caption}>СТАРОЕ СОХРАНЕНИЕ</Text><Text style={styles.cardTitle}>Неизвестный автомобиль</Text><Text style={styles.small}>Эта машина была из старой версии каталога и больше не существует в текущей версии.</Text><Pressable onPress={()=>patch(g=>({...g,cars:g.cars.filter(x=>x.uid!==o.uid),activeCarId:g.activeCarId===o.uid?null:g.activeCarId}))}><Text style={styles.dangerText}>Удалить старую запись</Text></Pressable></View>;return <View key={o.uid} style={[styles.product,game.activeCarId===o.uid&&styles.active]}><Text style={styles.caption}>{b.brand}</Text><Text style={styles.cardTitle}>{b.model}</Text><Text style={styles.small}>Состояние {Math.round(o.condition)}% · {money(o.mileage||0)} км</Text><View style={styles.buttons}><Btn text={game.activeCarId===o.uid?'Используется':'Использовать'} onPress={()=>patch({activeCarId:o.uid})}/><Btn text="Продать" danger onPress={()=>sellCar(o)}/></View></View>;})}
-  <Section title="Жильё"/><Status label="Сейчас живёшь" value={housing.name}/>{game.properties.map(o=><View key={o.uid} style={styles.product}><Text style={styles.cardTitle}>{housingById(o.catalogId).name}</Text><Text style={styles.small}>Состояние {Math.round(o.condition||100)}%</Text><Pressable onPress={()=>sellProp(o)}><Text style={styles.dangerText}>Продать недвижимость</Text></Pressable></View>)}
+  <Section title="Телефон"/>{phone?<View style={styles.bigCard}><Text style={styles.caption}>{phone.brand}</Text><Text style={styles.cardTitle}>{phone.model}</Text><Text style={styles.small}>Состояние {Math.round(game.phoneCondition)}% · эффективность {Math.round(phonePerf(game))}</Text><View style={styles.buttons}><Btn text="Позвонить семье" onPress={()=>phoneAction('family')}/><Btn text="Учиться онлайн" onPress={()=>phoneAction('learn')}/></View><View style={styles.buttons}><Btn text="Нетворкинг" onPress={()=>phoneAction('network')}/><Btn text="Фото / соцсети" onPress={()=>phoneAction('photo')}/></View><View style={styles.buttons}><Btn text="Ремонт" onPress={()=>phoneAction('repair')}/><Btn text="Продать" danger onPress={sellPhone}/></View></View>:<Empty text="Телефона нет. Часть функций недоступна."/>}
+  <Section title="Автомобили"/>{!game.cars.length&&<Empty text="Автомобилей нет."/>}{game.cars.map(o=>{const b=carById(o.catalogId);if(!b)return <View key={o.uid} style={styles.product}><Text style={styles.caption}>СТАРОЕ СОХРАНЕНИЕ</Text><Text style={styles.cardTitle}>Неизвестный автомобиль</Text><Text style={styles.small}>Эта машина была из старой версии каталога и больше не существует в текущей версии.</Text><Pressable onPress={()=>patch(g=>({...g,cars:g.cars.filter(x=>x.uid!==o.uid),activeCarId:g.activeCarId===o.uid?null:g.activeCarId}))}><Text style={styles.dangerText}>Удалить старую запись</Text></Pressable></View>;return <View key={o.uid} style={[styles.product,game.activeCarId===o.uid&&styles.active]}><Text style={styles.caption}>{b.brand}{o.rented?' · СДАНА В АРЕНДУ':''}</Text><Text style={styles.cardTitle}>{b.model}</Text><Text style={styles.small}>Состояние {Math.round(o.condition)}% · {money(o.mileage||0)} км · улучшения {o.upgrade||0}%</Text><View style={styles.buttons}><Btn text={game.activeCarId===o.uid?'Используется':'Использовать'} onPress={()=>patch({activeCarId:o.uid})}/><Btn text="Поехать с друзьями" onPress={()=>carAction(o,'friends')}/></View><View style={styles.buttons}><Btn text="ТО" onPress={()=>carAction(o,'service')}/><Btn text="Ремонт" onPress={()=>carAction(o,'repair')}/><Btn text="Улучшить" onPress={()=>carAction(o,'upgrade')}/></View><View style={styles.buttons}><Btn text={o.rented?'Забрать из аренды':'Сдать в аренду'} onPress={()=>carAction(o,'rent')}/><Btn text="Продать" danger onPress={()=>sellCar(o)}/></View></View>;})}
+  <Section title="Жильё"/><Status label="Сейчас живёшь" value={housing.name}/>{game.properties.map(o=>{const h=housingById(o.catalogId);return <View key={o.uid} style={styles.product}><Text style={styles.caption}>{o.rented?'СДАНО В АРЕНДУ':'СОБСТВЕННОСТЬ'}</Text><Text style={styles.cardTitle}>{h.name}</Text><Text style={styles.small}>Состояние {Math.round(o.condition||100)}% · улучшение комфорта {o.comfortUpgrade||0}%</Text><View style={styles.buttons}><Btn text="Уборка" onPress={()=>propertyAction(o,'clean')}/><Btn text="Ремонт" onPress={()=>propertyAction(o,'repair')}/><Btn text="Реновация" onPress={()=>propertyAction(o,'renovate')}/></View><View style={styles.buttons}><Btn text={o.rented?'Прекратить аренду':'Сдать в аренду'} onPress={()=>propertyAction(o,'rent')}/><Btn text="Продать" danger onPress={()=>sellProp(o)}/></View></View>;})}
   <Section title="Бизнесы"/>{!game.businesses.length&&<Empty text="Бизнесов нет."/>}{game.businesses.map(o=>{const b=BUSINESSES.find(x=>x.id===o.catalogId);if(!b)return <View key={o.uid} style={styles.product}><Text style={styles.caption}>СТАРОЕ СОХРАНЕНИЕ</Text><Text style={styles.cardTitle}>Неизвестный бизнес</Text><Text style={styles.small}>Запись относится к бизнесу из старой версии каталога.</Text><Pressable onPress={()=>patch(g=>({...g,businesses:g.businesses.filter(x=>x.uid!==o.uid)}))}><Text style={styles.dangerText}>Удалить старую запись</Text></Pressable></View>;return <View key={o.uid} style={styles.product}><Text style={styles.cardTitle}>{b.name}</Text><Text style={[styles.green,{color:(o.lastMonthProfit||0)>=0?C.green:C.red}]}>{(o.lastMonthProfit||0)>=0?'+':''}{money(o.lastMonthProfit||0)} ₴</Text><Text style={styles.small}>Состояние {Math.round(o.condition||100)}%</Text><Pressable onPress={()=>sellBiz(o)}><Text style={styles.dangerText}>Продать бизнес</Text></Pressable></View>;})}
   <Section title="История жизни"/>{[...game.memories].reverse().slice(0,15).map((m,i)=><View key={i} style={styles.memory}><Text style={styles.caption}>{m.date} · {m.age} лет</Text><Text style={styles.memoryText}>{m.text}</Text></View>)}
   <Pressable style={{padding:20,alignItems:'center'}} onPress={reset}><Text style={styles.dangerText}>Начать новую жизнь</Text></Pressable>
@@ -516,13 +721,13 @@ function Assets({game,phone,housing,capital,sellPhone,sellCar,sellProp,sellBiz,p
 }
 
 function EventModal({visible,event,onChoice}){if(!event)return null;return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.sheet}><Text style={styles.eventCat}>{event.cat.toUpperCase()}</Text><Text style={styles.eventTitle}>{event.title}</Text><Text style={styles.eventText}>{event.text}</Text>{event.choices.map((c,i)=><Pressable key={i} style={styles.choice} onPress={()=>onChoice(c)}><View style={{flex:1}}><Text style={styles.choiceTitle}>{c.label}</Text><Text style={styles.choiceCost}>{directText(c.direct)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}<Text style={styles.hint}>Показаны только непосредственные затраты. Скрытые последствия не раскрываются.</Text></View></View></Modal>;}
-function Nav({screen,setScreen}){return <View style={styles.nav}>{[['today','Сегодня'],['career','Карьера'],['finance','Деньги'],['market','Рынок'],['assets','Активы']].map(([id,t])=><Pressable key={id} style={styles.navItem} onPress={()=>setScreen(id)}><View style={[styles.marker,screen===id&&styles.markerOn]}/><Text style={[styles.navText,screen===id&&{color:C.text}]}>{t}</Text></Pressable>)}</View>;}
+function Nav({screen,setScreen}){return <View style={styles.nav}>{[['today','Сегодня'],['career','Карьера'],['health','Здоровье'],['finance','Деньги'],['market','Рынок'],['assets','Активы']].map(([id,t])=><Pressable key={id} style={styles.navItem} onPress={()=>setScreen(id)}><View style={[styles.marker,screen===id&&styles.markerOn]}/><Text style={[styles.navText,screen===id&&{color:C.text}]}>{t}</Text></Pressable>)}</View>;}
 
 function Section({title,right}){return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text>{right&&<Text style={styles.sectionRight}>{right}</Text>}</View>;}
 function Action({title,sub,meta,onPress,disabled}){return <Pressable style={[styles.action,disabled&&{opacity:.45}]} disabled={disabled} onPress={onPress}><View style={{flex:1}}><Text style={styles.roleTitle}>{title}</Text><Text style={styles.small}>{sub}</Text></View><Text style={styles.meta}>{meta}</Text></Pressable>;}
 function Mini({title,value,onPress}){return <Pressable style={styles.mini} onPress={onPress}><Text style={styles.roleTitle}>{title}</Text><Text style={styles.green}>{value}</Text></Pressable>;}
 function Status({label,value,warn}){return <View style={styles.status}><Text style={styles.small}>{label}</Text><Text style={[styles.statusVal,warn&&{color:C.yellow}]}>{value}</Text></View>;}
-function Row({l1,v1,l2,v2}){return <View style={styles.row}><View style={{flex:1}}><Text style={styles.small}>{l1}</Text><Text style={styles.statusVal}>{v1}</Text></View><View style={{flex:1,alignItems:'flex-end'}}><Text style={styles.small}>{l2}</Text><Text style={[styles.statusVal,{textAlign:'right'}]}>{v2}</Text></View></View>;}
+function Row({l1,v1,l2,v2}){return <View style={styles.row}><View style={styles.rowColLeft}><Text style={styles.small}>{l1}</Text><Text style={styles.rowValueLeft}>{v1}</Text></View>{l2!==undefined&&<View style={styles.rowColRight}><Text style={styles.small}>{l2}</Text><Text style={styles.rowValueRight}>{v2}</Text></View>}</View>;}
 function Offer({title,sub,opts,pick,danger}){return <View style={[styles.product,danger&&{borderColor:'#47282C'}]}><Text style={styles.roleTitle}>{title}</Text><Text style={styles.small}>{sub}</Text><View style={styles.buttons}>{opts.map(a=><Btn key={a} text={`${money(a)} ₴`} danger={danger} onPress={()=>pick(a)}/>)}</View></View>;}
 function Btn({text,onPress,danger}){return <Pressable style={[styles.btn,danger&&styles.dangerBtn]} onPress={onPress}><Text style={[styles.btnText,danger&&{color:C.red}]}>{text}</Text></Pressable>;}
 function Prod({title,price,foot,current,onPress}){return <View style={[styles.product,current&&styles.active]}><Text style={styles.cardTitle}>{title}</Text><Text style={styles.price}>{money(price)} ₴</Text>{foot&&<Text style={styles.small}>{foot}</Text>}<Pressable disabled={current} style={[styles.buy,current&&{opacity:.45}]} onPress={onPress}><Text style={styles.buyText}>{current?'Используется':'Купить / выбрать'}</Text></Pressable></View>;}
@@ -542,7 +747,7 @@ const styles=StyleSheet.create({
  section:{marginTop:26,marginBottom:9,flexDirection:'row',justifyContent:'space-between',alignItems:'center'},sectionTitle:{color:C.text,fontSize:15,fontWeight:'750'},sectionRight:{color:C.muted,fontSize:8.2,maxWidth:'55%',textAlign:'right'},
  action:{minHeight:64,borderRadius:14,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,paddingHorizontal:13,paddingVertical:11,marginBottom:8,flexDirection:'row',alignItems:'center'},roleTitle:{color:C.text,fontSize:12,fontWeight:'700'},small:{color:C.muted,fontSize:8.5,lineHeight:13,marginTop:4},meta:{color:C.sub,fontSize:8.5,marginLeft:9,maxWidth:90,textAlign:'right'},
  miniRow:{flexDirection:'row',gap:7},mini:{flex:1,minHeight:60,borderRadius:13,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,padding:10,justifyContent:'center'},
- status:{minHeight:49,borderRadius:13,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,paddingHorizontal:12,paddingVertical:9,marginBottom:7,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},statusVal:{color:C.text,fontSize:9.5,fontWeight:'650',maxWidth:'66%',textAlign:'right',marginTop:3},
+ status:{minHeight:49,borderRadius:13,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,paddingHorizontal:12,paddingVertical:9,marginBottom:7,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},statusVal:{color:C.text,fontSize:9.5,fontWeight:'650',textAlign:'right',marginTop:3,flexShrink:1},rowColLeft:{flex:1,minWidth:0,alignItems:'flex-start'},rowColRight:{flex:1,minWidth:0,alignItems:'flex-end'},rowValueLeft:{color:C.text,fontSize:10,fontWeight:'650',marginTop:4,textAlign:'left',alignSelf:'stretch'},rowValueRight:{color:C.text,fontSize:10,fontWeight:'650',marginTop:4,textAlign:'right',alignSelf:'stretch'},
  company:{borderRadius:16,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,marginBottom:10,overflow:'hidden',paddingTop:14},active:{borderColor:'#50577C'},company:{borderRadius:16,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,marginBottom:10,overflow:'hidden',paddingTop:14,paddingHorizontal:14},
  role:{minHeight:72,borderTopWidth:1,borderTopColor:C.border,marginHorizontal:-14,paddingHorizontal:13,paddingVertical:10,flexDirection:'row',alignItems:'center'},roleActive:{backgroundColor:'#141B18'},num:{width:28,height:28,borderRadius:8,backgroundColor:C.surface2,alignItems:'center',justifyContent:'center',marginRight:9},numText:{color:C.sub,fontSize:9,fontWeight:'800'},req:{color:C.muted,fontSize:7.4,lineHeight:11,marginTop:4},state:{fontSize:6.8,fontWeight:'800',marginLeft:7},
  gig:{minHeight:67,borderRadius:14,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,padding:12,marginBottom:8,flexDirection:'row',alignItems:'center'},redSmall:{color:C.red,fontSize:7.8,marginTop:4},
@@ -550,7 +755,7 @@ const styles=StyleSheet.create({
  buy:{minHeight:44,marginTop:14,borderRadius:11,backgroundColor:'#EEF0F4',alignItems:'center',justifyContent:'center'},buyText:{color:'#0A0D10',fontSize:10.5,fontWeight:'800'},dangerText:{color:C.red,fontSize:9.5,fontWeight:'650',marginTop:12},
  tabs:{minHeight:47,paddingHorizontal:9,flexDirection:'row',alignItems:'center',gap:4,borderBottomWidth:1,borderBottomColor:'#191E24',backgroundColor:'#0D1014'},tab:{flex:1,height:33,borderRadius:9,alignItems:'center',justifyContent:'center'},tabActive:{backgroundColor:C.surface2},tabText:{color:C.muted,fontSize:8.5,fontWeight:'650'},
  memory:{paddingVertical:11,borderBottomWidth:1,borderBottomColor:C.border},memoryText:{color:C.text,fontSize:10,lineHeight:15,marginTop:4},empty:{color:C.muted,fontSize:9.5,lineHeight:15,paddingVertical:14},
- nav:{minHeight:61,flexDirection:'row',backgroundColor:'#0C0F13',borderTopWidth:1,borderTopColor:'#1A2026',paddingTop:6},navItem:{flex:1,alignItems:'center',justifyContent:'center'},marker:{width:5,height:3,borderRadius:3,backgroundColor:'#343B45',marginBottom:7},markerOn:{width:19,backgroundColor:C.accent},navText:{color:'#59616C',fontSize:8},
+ nav:{minHeight:61,flexDirection:'row',backgroundColor:'#0C0F13',borderTopWidth:1,borderTopColor:'#1A2026',paddingTop:6},navItem:{flex:1,alignItems:'center',justifyContent:'center'},marker:{width:5,height:3,borderRadius:3,backgroundColor:'#343B45',marginBottom:7},markerOn:{width:19,backgroundColor:C.accent},navText:{color:'#59616C',fontSize:7.2},
  overlay:{flex:1,backgroundColor:'rgba(0,0,0,.74)',justifyContent:'flex-end'},sheet:{backgroundColor:'#12161B',borderTopLeftRadius:24,borderTopRightRadius:24,borderWidth:1,borderColor:C.border,padding:19,paddingBottom:27},eventCat:{color:C.accent,fontSize:8,fontWeight:'900',letterSpacing:1.1},eventTitle:{color:C.text,fontSize:21,fontWeight:'800',marginTop:5},eventText:{color:C.sub,fontSize:11,lineHeight:17,marginTop:8,marginBottom:10},
  choice:{minHeight:59,borderRadius:12,backgroundColor:C.surface2,borderWidth:1,borderColor:C.border,paddingHorizontal:12,paddingVertical:9,marginTop:7,flexDirection:'row',alignItems:'center'},choiceTitle:{color:C.text,fontSize:11,fontWeight:'650'},choiceCost:{color:C.yellow,fontSize:8.2,marginTop:4},arrow:{color:C.muted,fontSize:20,marginLeft:7},hint:{color:C.muted,fontSize:7.2,lineHeight:11,marginTop:12},close:{color:C.sub,fontSize:22},hourBox:{width:42,height:42,borderRadius:10,backgroundColor:C.surface,alignItems:'center',justifyContent:'center',marginRight:10},hour:{color:C.text,fontSize:15,fontWeight:'800'}
 });
