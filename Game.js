@@ -1,4497 +1,560 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  SafeAreaView,
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  StatusBar,
-  Alert,
-  ActivityIndicator,
-  Modal,
+  SafeAreaView, View, Text, StyleSheet, Pressable, ScrollView,
+  StatusBar, Alert, ActivityIndicator, Modal
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SAVE_KEY = '@life_sim_save_v5';
 
 const C = {
-  bg: '#090A0C',
-  surface: '#111318',
-  surface2: '#171A20',
-  surface3: '#1D2128',
-  border: '#252932',
-  text: '#F3F4F6',
-  sub: '#989EA8',
-  muted: '#626873',
-  green: '#70D49B',
-  red: '#E77C83',
-  yellow: '#E7BE69',
-  blue: '#74AAEA',
-  accent: '#8C91FF',
+  bg:'#080A0D', surface:'#11151A', surface2:'#171C23', border:'#252C35',
+  text:'#F5F7FA', sub:'#A0A7B1', muted:'#66707B', green:'#62D698',
+  red:'#F0787E', yellow:'#E7BD64', accent:'#8D92FF', blue:'#72A9FF'
 };
 
-const clamp = (v, min = 0, max = 100) => Math.max(min, Math.min(max, v));
-const money = (v) => Number(Math.round(v || 0)).toLocaleString('uk-UA');
+const clamp=(v,min=0,max=100)=>Math.max(min,Math.min(max,v));
+const money=v=>Number(Math.round(v||0)).toLocaleString('uk-UA');
+const MONTHS=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const WEEKDAYS=['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+const formatDate=d=>`${d.day} ${MONTHS[d.month-1]} ${d.year}`;
+const weekdayIndex=d=>new Date(d.year,d.month-1,d.day).getDay();
+const weekday=d=>WEEKDAYS[weekdayIndex(d)];
+const formatTime=m=>`${String(Math.floor((((m%1440)+1440)%1440)/60)).padStart(2,'0')}:${String((((m%1440)+1440)%1440)%60).padStart(2,'0')}`;
+const dim=(m,y)=>new Date(y,m,0).getDate();
+const nextDate=d=>{let day=d.day+1,month=d.month,year=d.year;if(day>dim(month,year)){day=1;month++;if(month>12){month=1;year++;}}return{day,month,year};};
+const serial=d=>Math.floor(new Date(d.year,d.month-1,d.day).getTime()/86400000);
+const uid=p=>`${p}_${Date.now()}_${Math.floor(Math.random()*99999)}`;
 
-const START = {
-  version: 11,
-  date: { day: 12, month: 8, year: 2026 },
-  timeMinutes: 8 * 60,
-  birthday: { day: 12, month: 8 },
-  age: 18,
-  alive: true,
-  causeOfDeath: null,
-
-  cash: 500,
-  bank: 0,
-
-  health: 94,
-  energy: 86,
-  fatigue: 12,
-  satiety: 72,
-  mood: 74,
-  stress: 8,
-  fitness: 42,
-
-  intelligence: 8,
-  charisma: 8,
-  professionalSkill: 0,
-  reputation: 2,
-
-  hidden: {
-    familyBond: 60,
-    socialTrust: 50,
-    careerTrust: 50,
-    empathy: 50,
-    reliability: 50,
-    burnout: 0,
-    longTermHealth: 92,
-    loneliness: 10,
-    lifeStress: 5,
-    creditTrust: 48,
-    financialDiscipline: 50,
-  },
-
-  jobId: null,
-  workedToday: false,
-  workDaysMonth: 0,
-  yearsExperience: 0,
-  careerMonths: 0,
-
-  familyMealsToday: 0,
-  sideGigDoneToday: {},
-  socialDoneToday: {},
-  socialStats: {
-    conversations: 0,
-    meetups: 0,
-    networking: 0,
-    dates: 0,
-    courses: 0,
-    newConnections: 0,
-  },
-
-  phoneId: 'samsung_s3',
-  phoneCondition: 55,
-  cars: [],
-  activeCarId: null,
-  housingId: 'parents',
-  properties: [],
-  businesses: [],
-  investments: 0, // legacy field; old saves are migrated automatically
-  investmentPortfolio: {
-    holdings: {},
-    prices: {},
-    deposits: [],
-    bonds: [],
-    legacyValue: 0,
-    realizedPnL: 0,
-    dividendsReceived: 0,
-    interestReceived: 0,
-    lastMarketMove: {},
-  },
-
-  debts: [],
-  borrowingHistory: {
-    bankLoansClosed: 0,
-    microLoansClosed: 0,
-    socialLoansClosed: 0,
-    latePayments: 0,
-    defaults: 0,
-    totalInterestPaid: 0,
-  },
-
-  monthly: {
-    salary: 0,
-    business: 0,
-    investments: 0,
-    housing: 0,
-    food: 0,
-    transport: 0,
-    healthcare: 0,
-    purchases: 0,
-    debtPayments: 0,
-    interest: 0,
-    sideGigs: 0,
-    familySupport: 0,
-  },
-
-  stats: {
-    daysLived: 1,
-    totalEarned: 0,
-    totalSpent: 0,
-    jobsHeld: 0,
-    eventsSeen: 0,
-    goodDeeds: 0,
-    missedFamilyEvents: 0,
-    sideGigEarned: 0,
-    familySupportValue: 0,
-  },
-
-  relatives: {
-    mother: { name: 'Мама', alive: true, age: 43, relationship: 75, health: 88 },
-    father: { name: 'Отец', alive: true, age: 45, relationship: 70, health: 84 },
-    grandmother: { name: 'Бабушка', alive: true, age: 66, relationship: 66, health: 68 },
-  },
-
-  people: {
-    coworker_anna: { name: 'Анна', relation: 0, trust: 0, alive: true },
-    coworker_oleg: { name: 'Олег', relation: 0, trust: 0, alive: true },
-    boss: { name: 'Руководитель', relation: 0, trust: 0, alive: true },
-    friend_maks: { name: 'Максим', relation: 18, trust: 12, alive: true, role: 'знакомый' },
-    friend_sofia: { name: 'София', relation: 10, trust: 8, alive: true, role: 'знакомая' },
-  },
-
-  memories: [],
-  pendingEventId: null,
-  lastEventDay: -20,
-  endedAt: null,
+const START={
+  version:12,date:{day:12,month:8,year:2026},timeMinutes:480,birthday:{day:12,month:8},age:18,alive:true,
+  cash:500,bank:0,health:94,energy:86,fatigue:12,satiety:72,mood:74,stress:8,fitness:42,
+  intelligence:8,charisma:8,professionalSkill:0,reputation:2,
+  hidden:{familyBond:60,socialTrust:50,careerTrust:50,empathy:50,reliability:52,burnout:0,longTermHealth:92,loneliness:10,lifeStress:5,creditTrust:48,financialDiscipline:50,nutritionHistory:65,sleepHistory:70},
+  career:{companyId:null,roleId:null,companyMonths:0,roleMonths:0,workDaysMonth:0,workedToday:false,excusedToday:false,attendance:{absences:0,late:0,warnings:0,perfectMonths:0,streak:0}},
+  familyMealsToday:0,sideGigDoneToday:{},
+  phoneId:'samsung_s3',phoneCondition:55,cars:[],activeCarId:null,housingId:'parents',properties:[],businesses:[],
+  debts:[],investmentPortfolio:{marketValue:0,lastMonthReturn:0},
+  monthly:{salary:0,business:0,investments:0,housing:0,food:0,transport:0,sideGigs:0,familySupport:0},
+  stats:{daysLived:1,totalEarned:0,totalSpent:0,jobsHeld:0,eventsSeen:0,sideGigEarned:0,familySupportValue:0},
+  relatives:{mother:{name:'Мама',alive:true,age:43,relationship:75,health:88},father:{name:'Отец',alive:true,age:45,relationship:70,health:84},grandmother:{name:'Бабушка',alive:true,age:66,relationship:66,health:68}},
+  memories:[],eventHistory:[],pendingEventId:null,lastEventDay:-10
 };
 
-const JOBS = [
-  {
-    id: 'courier',
-    company: 'Glovo',
-    name: 'Курьер',
-    salary: 19000,
-    hours: 8,
-    energy: 28,
-    fatigue: 24,
-    stress: 6,
-    req: { intelligence: 0, charisma: 0, skill: 0, reputation: 0 },
-  },
-  {
-    id: 'seller',
-    company: 'COMFY',
-    name: 'Продавец-консультант',
-    salary: 26000,
-    hours: 8,
-    energy: 26,
-    fatigue: 22,
-    stress: 8,
-    req: { intelligence: 8, charisma: 12, skill: 0, reputation: 0 },
-  },
-  {
-    id: 'operator',
-    company: 'Київстар',
-    name: 'Оператор поддержки',
-    salary: 33000,
-    hours: 8,
-    energy: 22,
-    fatigue: 22,
-    stress: 11,
-    req: { intelligence: 14, charisma: 12, skill: 5, reputation: 2 },
-  },
-  {
-    id: 'sales_manager',
-    company: 'AUTO.RIA',
-    name: 'Менеджер по продажам',
-    salary: 52000,
-    hours: 9,
-    energy: 25,
-    fatigue: 25,
-    stress: 14,
-    req: { intelligence: 18, charisma: 25, skill: 18, reputation: 8 },
-  },
-  {
-    id: 'senior_manager',
-    company: 'Rozetka',
-    name: 'Старший менеджер',
-    salary: 82000,
-    hours: 9,
-    energy: 27,
-    fatigue: 27,
-    stress: 17,
-    req: { intelligence: 28, charisma: 34, skill: 35, reputation: 20 },
-  },
-  {
-    id: 'director',
-    company: 'Nova Group',
-    name: 'Коммерческий директор',
-    salary: 165000,
-    hours: 10,
-    energy: 30,
-    fatigue: 31,
-    stress: 24,
-    req: { intelligence: 48, charisma: 52, skill: 65, reputation: 45 },
-  },
+const COMPANIES=[
+ {id:'nova',name:'Нова пошта',sector:'Логистика',roles:[
+  {id:'np1',name:'Оператор отделения',salary:24000,hours:8,req:{i:6,c:8,s:0,r:0}},
+  {id:'np2',name:'Старший оператор',salary:33000,hours:8,min:4,req:{i:12,c:13,s:12,r:5}},
+  {id:'np3',name:'Керівник відділення',salary:52000,hours:9,min:12,req:{i:22,c:25,s:28,r:15}},
+  {id:'np4',name:'Регіональний менеджер',salary:90000,hours:9,min:30,req:{i:36,c:42,s:52,r:32}}
+ ]},
+ {id:'rozetka',name:'ROZETKA',sector:'E-commerce',roles:[
+  {id:'rz1',name:'Комплектувальник замовлень',salary:26000,hours:8,req:{i:5,c:4,s:0,r:0}},
+  {id:'rz2',name:'Специалист поддержки',salary:34000,hours:8,min:3,req:{i:13,c:14,s:8,r:3}},
+  {id:'rz3',name:'Менеджер категории',salary:65000,hours:9,min:14,req:{i:28,c:27,s:38,r:18}},
+  {id:'rz4',name:'Руководитель направления',salary:125000,hours:10,min:36,req:{i:45,c:48,s:68,r:42}}
+ ]},
+ {id:'atb',name:'АТБ',sector:'Ритейл',roles:[
+  {id:'atb1',name:'Продавец-кассир',salary:23000,hours:8,req:{i:4,c:6,s:0,r:0}},
+  {id:'atb2',name:'Администратор магазина',salary:34000,hours:9,min:6,req:{i:15,c:18,s:16,r:6}},
+  {id:'atb3',name:'Управляющий магазином',salary:52000,hours:9,min:18,req:{i:25,c:30,s:34,r:18}},
+  {id:'atb4',name:'Региональный управляющий',salary:92000,hours:10,min:38,req:{i:40,c:44,s:58,r:38}}
+ ]},
+ {id:'silpo',name:'Сільпо',sector:'Ритейл',roles:[
+  {id:'sp1',name:'Кассир',salary:24000,hours:8,req:{i:4,c:7,s:0,r:0}},
+  {id:'sp2',name:'Старший отдела',salary:35000,hours:8,min:6,req:{i:14,c:18,s:18,r:7}},
+  {id:'sp3',name:'Управляющий супермаркетом',salary:58000,hours:9,min:20,req:{i:28,c:32,s:40,r:22}}
+ ]},
+ {id:'kyivstar',name:'Київстар',sector:'Телеком',roles:[
+  {id:'ks1',name:'Специалист поддержки',salary:32000,hours:8,phone:20,req:{i:12,c:12,s:4,r:2}},
+  {id:'ks2',name:'Менеджер продаж',salary:47000,hours:8,min:6,req:{i:18,c:27,s:18,r:10}},
+  {id:'ks3',name:'Team Lead',salary:76000,hours:9,min:20,req:{i:32,c:38,s:45,r:28}},
+  {id:'ks4',name:'Руководитель направления',salary:145000,hours:10,min:42,req:{i:50,c:52,s:70,r:45}}
+ ]},
+ {id:'privat',name:'ПриватБанк',sector:'Банк',roles:[
+  {id:'pb1',name:'Специалист клиентского обслуживания',salary:30000,hours:8,phone:15,req:{i:13,c:13,s:5,r:4}},
+  {id:'pb2',name:'Финансовый консультант',salary:47000,hours:8,min:8,req:{i:25,c:24,s:23,r:15}},
+  {id:'pb3',name:'Руководитель отделения',salary:72000,hours:9,min:24,req:{i:36,c:37,s:48,r:30}},
+  {id:'pb4',name:'Региональный руководитель',salary:135000,hours:10,min:48,req:{i:52,c:50,s:72,r:48}}
+ ]}
 ];
 
+const SIDE_GIGS=[
+ ['flyers','Раздача листовок',450,3,14,{}],['loader','Грузчик',850,4,28,{fitness:30}],
+ ['waiter','Официант на мероприятии',950,6,24,{charisma:8}],['inventory','Ночная инвентаризация',1150,7,26,{}],
+ ['warehouse','Смена на складе',1050,6,27,{fitness:25}],['walk_delivery','Пешая доставка',700,4,22,{phone:10}],
+ ['car_delivery','Доставка на автомобиле',1550,5,15,{car:true,phone:20}],['taxi','Такси вечером',1900,6,17,{car:true,phone:25}],
+ ['moving','Помощь с переездом',1250,5,31,{fitness:38}],['dogs','Выгул собак',520,3,13,{}],
+ ['tutor','Частный урок',1200,2,10,{intelligence:30,charisma:16}],['web','Небольшой сайт на фрилансе',3200,6,20,{intelligence:35,phone:30}],
+ ['social','Ведение соцсетей бизнеса',2100,4,16,{charisma:28,phone:45}],['photo','Фотосъёмка мероприятия',2600,5,18,{charisma:20,phone:65}],
+ ['handyman','Мелкий бытовой ремонт',1750,5,25,{skill:25}]
+].map(x=>({id:x[0],name:x[1],pay:x[2],hours:x[3],energy:x[4],req:x[5]}));
 
-const SIDE_GIGS = [
-  {
-    id: 'flyers',
-    name: 'Раздача листовок',
-    company: 'Промо-агентство',
-    pay: 350,
-    hours: 2,
-    energy: 12,
-    fatigue: 9,
-    stress: 2,
-    satiety: 5,
-    req: () => true,
-    note: 'Простая подработка без требований.',
-  },
-  {
-    id: 'loader',
-    name: 'Помощь на складе',
-    company: 'Склад',
-    pay: 750,
-    hours: 4,
-    energy: 30,
-    fatigue: 27,
-    stress: 4,
-    satiety: 10,
-    req: (game) => game.fitness >= 30,
-    note: 'Тяжёлая физическая работа. Нужна нормальная форма.',
-  },
-  {
-    id: 'delivery',
-    name: 'Вечерняя доставка',
-    company: 'Доставка',
-    pay: 950,
-    hours: 4,
-    energy: 24,
-    fatigue: 19,
-    stress: 5,
-    satiety: 9,
-    req: (game) => !!game.phoneId,
-    note: 'Нужен работающий смартфон.',
-  },
-  {
-    id: 'event_helper',
-    name: 'Помощник на мероприятии',
-    company: 'Event Staff',
-    pay: 1250,
-    hours: 5,
-    energy: 23,
-    fatigue: 20,
-    stress: 7,
-    satiety: 10,
-    req: (game) => game.charisma >= 10,
-    note: 'Нужна базовая коммуникабельность.',
-  },
-  {
-    id: 'freelance',
-    name: 'Небольшой фриланс-заказ',
-    company: 'Онлайн-заказ',
-    pay: 1600,
-    hours: 4,
-    energy: 18,
-    fatigue: 14,
-    stress: 8,
-    satiety: 7,
-    req: (game) => !!game.phoneId && game.intelligence >= 18,
-    note: 'Нужны смартфон и развитый интеллект.',
-  },
-  {
-    id: 'taxi',
-    name: 'Подработка в такси',
-    company: 'Такси',
-    pay: 2200,
-    hours: 6,
-    energy: 21,
-    fatigue: 22,
-    stress: 10,
-    satiety: 11,
-    req: (game) => {
-      const owned = game.cars.find(c => c.uid === game.activeCarId);
-      return !!owned && owned.condition >= 45;
-    },
-    note: 'Нужен выбранный автомобиль в исправном состоянии.',
-  },
+const PHONES=[
+ ['nokia','Nokia','6300',900,5,1],['samsung_s3','Samsung','Galaxy S III',1800,10,2],['iphone5','Apple','iPhone 5',2600,12,4],
+ ['iphone7','Apple','iPhone 7',5200,28,10],['redmi8','Xiaomi','Redmi Note 8',6500,35,7],['iphone11','Apple','iPhone 11',12500,55,23],
+ ['s22','Samsung','Galaxy S22',22000,72,35],['iphone13','Apple','iPhone 13 Pro',28500,78,46],['pixel9','Google','Pixel 9 Pro',44000,89,55],
+ ['iphone16','Apple','iPhone 16 Pro Max',62000,96,78],['s25','Samsung','Galaxy S25 Ultra',68000,98,80]
+].map((x,i)=>({id:x[0],brand:x[1],model:x[2],price:x[3],performance:x[4],prestige:x[5],monthly:80+i*20}));
+
+const CARS=[
+ ['lanos','Daewoo','Lanos',90000,52,25,3,4500],['sens','ЗАЗ','Sens',110000,55,27,3,4300],['logan','Renault','Logan',210000,78,38,7,5200],
+ ['golf','Volkswagen','Golf VII',390000,72,52,17,6500],['octavia','Skoda','Octavia',610000,80,62,22,7200],['camry','Toyota','Camry',980000,91,74,39,8800],
+ ['bmw530','BMW','530d G30',1250000,72,84,58,12500],['e220','Mercedes-Benz','E 220 d',1800000,78,89,67,14800],
+ ['model3','Tesla','Model 3',1850000,82,82,62,9000],['m5','BMW','M5',6200000,72,91,91,36000],['911','Porsche','911 Carrera',8500000,86,88,96,46000],
+ ['bentley','Bentley','Continental GT',14500000,77,98,99,78000],['ghost','Rolls-Royce','Ghost',23000000,82,100,100,115000]
+].map(x=>({id:x[0],brand:x[1],model:x[2],price:x[3],reliability:x[4],comfort:x[5],prestige:x[6],monthly:x[7]}));
+
+const HOUSING=[
+ {id:'parents',name:'Жить с родителями',type:'family',price:0,monthly:0,comfort:48},
+ {id:'homeless',name:'Без постоянного жилья',type:'none',price:0,monthly:0,comfort:5},
+ {id:'room',name:'Комната',type:'rent',price:0,monthly:6500,comfort:42},
+ {id:'studio',name:'Студия',type:'rent',price:0,monthly:14500,comfort:60},
+ {id:'flat',name:'1-комнатная квартира',type:'buy',price:2200000,monthly:3800,comfort:69},
+ {id:'premium',name:'Квартира бизнес-класса',type:'buy',price:5800000,monthly:8500,comfort:88},
+ {id:'house',name:'Загородный дом',type:'buy',price:11000000,monthly:18000,comfort:95}
 ];
 
-const PHONES = [
-  { id: 'nokia_6300', brand: 'Nokia', model: '6300', year: 2007, price: 900, performance: 5, camera: 2, prestige: 1, monthly: 80 },
-  { id: 'samsung_s3', brand: 'Samsung', model: 'Galaxy S III', year: 2012, price: 1800, performance: 10, camera: 9, prestige: 2, monthly: 100 },
-  { id: 'iphone_5', brand: 'Apple', model: 'iPhone 5', year: 2012, price: 2600, performance: 12, camera: 13, prestige: 4, monthly: 110 },
-  { id: 'iphone_7', brand: 'Apple', model: 'iPhone 7', year: 2016, price: 5200, performance: 28, camera: 31, prestige: 10, monthly: 130 },
-  { id: 'redmi_note_8', brand: 'Xiaomi', model: 'Redmi Note 8', year: 2019, price: 6500, performance: 35, camera: 38, prestige: 7, monthly: 130 },
-  { id: 'iphone_11', brand: 'Apple', model: 'iPhone 11', year: 2019, price: 12500, performance: 55, camera: 61, prestige: 23, monthly: 170 },
-  { id: 'galaxy_s22', brand: 'Samsung', model: 'Galaxy S22', year: 2022, price: 22000, performance: 72, camera: 76, prestige: 35, monthly: 190 },
-  { id: 'iphone_13_pro', brand: 'Apple', model: 'iPhone 13 Pro', year: 2021, price: 28500, performance: 78, camera: 84, prestige: 46, monthly: 210 },
-  { id: 'pixel_9_pro', brand: 'Google', model: 'Pixel 9 Pro', year: 2024, price: 44000, performance: 89, camera: 94, prestige: 55, monthly: 240 },
-  { id: 'iphone_16_pro_max', brand: 'Apple', model: 'iPhone 16 Pro Max', year: 2024, price: 62000, performance: 96, camera: 96, prestige: 78, monthly: 260 },
-  { id: 'galaxy_s25_ultra', brand: 'Samsung', model: 'Galaxy S25 Ultra', year: 2025, price: 68000, performance: 98, camera: 98, prestige: 80, monthly: 270 },
-];
-
-const CARS = [
-  { id: 'lanos_2006', brand: 'Daewoo', model: 'Lanos', year: 2006, price: 90000, reliability: 52, comfort: 25, prestige: 3, monthly: 4500 },
-  { id: 'sens_2010', brand: 'ЗАЗ', model: 'Sens', year: 2010, price: 110000, reliability: 55, comfort: 27, prestige: 3, monthly: 4300 },
-  { id: 'logan_2012', brand: 'Renault', model: 'Logan', year: 2012, price: 210000, reliability: 78, comfort: 38, prestige: 7, monthly: 5200 },
-  { id: 'golf_2013', brand: 'Volkswagen', model: 'Golf VII', year: 2013, price: 390000, reliability: 72, comfort: 52, prestige: 17, monthly: 6500 },
-  { id: 'octavia_2017', brand: 'Skoda', model: 'Octavia', year: 2017, price: 610000, reliability: 80, comfort: 62, prestige: 22, monthly: 7200 },
-  { id: 'camry_2019', brand: 'Toyota', model: 'Camry', year: 2019, price: 980000, reliability: 91, comfort: 74, prestige: 39, monthly: 8800 },
-  { id: 'bmw_530d_2017', brand: 'BMW', model: '530d G30', year: 2017, price: 1250000, reliability: 72, comfort: 84, prestige: 58, monthly: 12500 },
-  { id: 'mercedes_e220d_2020', brand: 'Mercedes-Benz', model: 'E 220 d', year: 2020, price: 1800000, reliability: 78, comfort: 89, prestige: 67, monthly: 14800 },
-  { id: 'bmw_m5_2024', brand: 'BMW', model: 'M5', year: 2024, price: 6200000, reliability: 72, comfort: 91, prestige: 91, monthly: 36000 },
-  { id: 'porsche_911_2025', brand: 'Porsche', model: '911 Carrera', year: 2025, price: 8500000, reliability: 86, comfort: 88, prestige: 96, monthly: 46000 },
-  { id: 'bentley_continental', brand: 'Bentley', model: 'Continental GT', year: 2025, price: 14500000, reliability: 77, comfort: 98, prestige: 99, monthly: 78000 },
-  { id: 'rolls_royce_ghost', brand: 'Rolls-Royce', model: 'Ghost', year: 2025, price: 23000000, reliability: 82, comfort: 100, prestige: 100, monthly: 115000 },
-];
-
-const HOUSING = [
-  { id: 'homeless', name: 'Без постоянного жилья', type: 'special', price: 0, monthly: 0, comfort: 5, healthBonus: -4, prestige: 0 },
-  { id: 'parents', name: 'Жить с родителями', type: 'rent', price: 0, monthly: 2500, comfort: 35, healthBonus: 0, prestige: 0 },
-  { id: 'room', name: 'Комната в квартире', type: 'rent', price: 0, monthly: 6500, comfort: 42, healthBonus: 0, prestige: 2 },
-  { id: 'studio_rent', name: 'Студия в аренду', type: 'rent', price: 0, monthly: 14500, comfort: 60, healthBonus: 1, prestige: 7 },
-  { id: 'flat_buy', name: '1-комнатная квартира', type: 'buy', price: 2200000, monthly: 3800, comfort: 69, healthBonus: 2, prestige: 14 },
-  { id: 'flat_premium', name: 'Квартира бизнес-класса', type: 'buy', price: 5800000, monthly: 8500, comfort: 88, healthBonus: 3, prestige: 35 },
-  { id: 'house', name: 'Загородный дом', type: 'buy', price: 11000000, monthly: 18000, comfort: 95, healthBonus: 4, prestige: 55 },
-];
-
-const BUSINESS_CATALOG = [
-  { id: 'coffee_machine', name: 'Кофейный автомат', price: 65000, baseDaily: 340, expenses: 0.28 },
-  { id: 'coffee_kiosk', name: 'Кофейный киоск', price: 260000, baseDaily: 1700, expenses: 0.46 },
-  { id: 'car_wash', name: 'Автомойка', price: 950000, baseDaily: 6200, expenses: 0.55 },
-  { id: 'cafe', name: 'Кофейня', price: 1650000, baseDaily: 10200, expenses: 0.62 },
-  { id: 'service_station', name: 'СТО', price: 3200000, baseDaily: 20500, expenses: 0.61 },
-  { id: 'restaurant', name: 'Ресторан', price: 6500000, baseDaily: 38000, expenses: 0.68 },
-];
+const BUSINESSES=[
+ ['vending','Вендинговый автомат',65000,380,.32],['instashop','Интернет-магазин',120000,950,.46],['coffee','Кофейный киоск',260000,1700,.46],
+ ['tires','Шиномонтаж',520000,3400,.51],['barber','Барбершоп',720000,4300,.58],['beauty','Салон красоты',850000,5200,.59],
+ ['wash','Автомойка',950000,6200,.55],['smallsto','Небольшое СТО',1800000,11800,.61],['cafe','Кофейня',1650000,10200,.62],
+ ['grocery','Продуктовый магазин',2400000,16000,.71],['delivery','Служба доставки',2900000,18500,.68],['sto','Полноценное СТО',4200000,29000,.63],
+ ['restaurant','Ресторан',6500000,38000,.70],['dealer','Автосалон подержанных авто',11500000,72000,.78],['logistics','Логистическая компания',18500000,125000,.81]
+].map(x=>({id:x[0],name:x[1],price:x[2],daily:x[3],expenseRate:x[4]}));
 
 
-
-const INVESTMENT_ASSETS = [
-  {
-    id: 'spy',
-    type: 'etf',
-    ticker: 'SPY',
-    name: 'SPDR S&P 500 ETF',
-    price: 24500,
-    drift: 0.007,
-    volatility: 0.045,
-    dividendYield: 0.012,
-    risk: 'Средний',
-  },
-  {
-    id: 'qqq',
-    type: 'etf',
-    ticker: 'QQQ',
-    name: 'Invesco QQQ',
-    price: 21800,
-    drift: 0.008,
-    volatility: 0.055,
-    dividendYield: 0.006,
-    risk: 'Выше среднего',
-  },
-  {
-    id: 'aapl',
-    type: 'stock',
-    ticker: 'AAPL',
-    name: 'Apple',
-    price: 8200,
-    drift: 0.009,
-    volatility: 0.075,
-    dividendYield: 0.004,
-    risk: 'Выше среднего',
-  },
-  {
-    id: 'msft',
-    type: 'stock',
-    ticker: 'MSFT',
-    name: 'Microsoft',
-    price: 17500,
-    drift: 0.008,
-    volatility: 0.065,
-    dividendYield: 0.007,
-    risk: 'Выше среднего',
-  },
-  {
-    id: 'nvda',
-    type: 'stock',
-    ticker: 'NVDA',
-    name: 'NVIDIA',
-    price: 7100,
-    drift: 0.012,
-    volatility: 0.12,
-    dividendYield: 0.001,
-    risk: 'Высокий',
-  },
-  {
-    id: 'tsla',
-    type: 'stock',
-    ticker: 'TSLA',
-    name: 'Tesla',
-    price: 13800,
-    drift: 0.007,
-    volatility: 0.14,
-    dividendYield: 0,
-    risk: 'Высокий',
-  },
-  {
-    id: 'btc',
-    type: 'crypto',
-    ticker: 'BTC',
-    name: 'Bitcoin',
-    price: 4200000,
-    drift: 0.014,
-    volatility: 0.19,
-    dividendYield: 0,
-    risk: 'Очень высокий',
-  },
-  {
-    id: 'eth',
-    type: 'crypto',
-    ticker: 'ETH',
-    name: 'Ethereum',
-    price: 185000,
-    drift: 0.012,
-    volatility: 0.18,
-    dividendYield: 0,
-    risk: 'Очень высокий',
-  },
-];
-
-const DEPOSIT_PRODUCTS = [
-  { id: 'dep_30', name: 'Депозит на 30 дней', termDays: 30, annualRate: 9.5, min: 1000 },
-  { id: 'dep_90', name: 'Депозит на 3 месяца', termDays: 90, annualRate: 11.5, min: 3000 },
-  { id: 'dep_180', name: 'Депозит на 6 месяцев', termDays: 180, annualRate: 13.0, min: 5000 },
-  { id: 'dep_365', name: 'Депозит на 12 месяцев', termDays: 365, annualRate: 14.0, min: 10000 },
-];
-
-const BOND_PRODUCTS = [
-  { id: 'ovgz_180', name: 'ОВГЗ · 6 месяцев', termDays: 180, annualRate: 14.5, min: 1000 },
-  { id: 'ovgz_365', name: 'ОВГЗ · 12 месяцев', termDays: 365, annualRate: 16.0, min: 1000 },
-  { id: 'ovgz_730', name: 'ОВГЗ · 24 месяца', termDays: 730, annualRate: 17.0, min: 5000 },
-];
-
-function investmentAssetById(id) {
-  return INVESTMENT_ASSETS.find(a => a.id === id) || null;
-}
-
-function investmentPrice(game, assetId) {
-  const asset = investmentAssetById(assetId);
-  if (!asset) return 0;
-  return game.investmentPortfolio?.prices?.[assetId] || asset.price;
-}
-
-function marketHoldingsValue(game) {
-  const holdings = game.investmentPortfolio?.holdings || {};
-  return Object.entries(holdings).reduce((sum, [assetId, holding]) => {
-    return sum + (holding.units || 0) * investmentPrice(game, assetId);
-  }, 0);
-}
-
-function fixedInvestmentValue(game) {
-  const portfolio = game.investmentPortfolio || {};
-  const deposits = (portfolio.deposits || [])
-    .filter(x => x.status === 'active')
-    .reduce((sum, x) => sum + (x.principal || 0), 0);
-  const bonds = (portfolio.bonds || [])
-    .filter(x => x.status === 'active')
-    .reduce((sum, x) => sum + (x.principal || 0), 0);
-  return deposits + bonds;
-}
-
-function investmentTotalValue(game) {
-  const legacy = game.investmentPortfolio?.legacyValue || 0;
-  return marketHoldingsValue(game) + fixedInvestmentValue(game) + legacy;
-}
-
-const SOCIAL_ACTIVITIES = [
-  {
-    id: 'casual_talk',
-    name: 'Пообщаться с людьми',
-    subtitle: 'Прогулка, знакомые, обычные разговоры',
-    cost: 0,
-    minutes: 90,
-    energy: 8,
-    fatigue: 5,
-    charisma: 0.14,
-    mood: 2,
-    stress: -2,
-    repeatable: true,
-  },
-  {
-    id: 'friends_meet',
-    name: 'Встретиться с друзьями',
-    subtitle: 'Кафе или прогулка · отношения и настроение',
-    cost: 350,
-    minutes: 180,
-    energy: 10,
-    fatigue: 7,
-    charisma: 0.22,
-    mood: 7,
-    stress: -7,
-    repeatable: false,
-  },
-  {
-    id: 'networking',
-    name: 'Пойти на нетворкинг',
-    subtitle: 'Новые деловые знакомства и практика общения',
-    cost: 700,
-    minutes: 180,
-    energy: 16,
-    fatigue: 10,
-    charisma: 0.38,
-    mood: 1,
-    stress: 3,
-    repeatable: false,
-  },
-  {
-    id: 'date',
-    name: 'Сходить на свидание',
-    subtitle: 'Социальный опыт · результат зависит от состояния и харизмы',
-    cost: 900,
-    minutes: 180,
-    energy: 12,
-    fatigue: 8,
-    charisma: 0.30,
-    mood: 4,
-    stress: 1,
-    repeatable: false,
-  },
-  {
-    id: 'speaking_course',
-    name: 'Курс ораторского мастерства',
-    subtitle: 'Практика речи, уверенности и выступлений',
-    cost: 1800,
-    minutes: 240,
-    energy: 18,
-    fatigue: 12,
-    charisma: 0.85,
-    mood: 1,
-    stress: 2,
-    repeatable: false,
-  },
-];
-
-const EVENTS = {
-  family_dinner: {
-    id: 'family_dinner',
-    title: 'Семейный ужин',
-    text: 'Мама звонит и приглашает приехать вечером. Последнее время вы видитесь нечасто.',
-    choices: [
-      { label: 'Приехать на ужин', effect: { time: 180, mood: 8, energy: -8, familyBond: 6 }, memory: 'Приехал на семейный ужин' },
-      { label: 'Сослаться на работу', effect: { familyBond: -3, reliability: -1 }, memory: 'Отказался от семейного ужина ради дел' },
-      { label: 'Не отвечать', effect: { familyBond: -7, loneliness: 2 }, memory: 'Не ответил на звонок семьи' },
-    ],
-  },
-  coworker_funeral: {
-    id: 'coworker_funeral',
-    title: 'Сбор на похороны коллеги',
-    text: 'Умер сотрудник компании, который занимал должность выше вашей. Коллеги собирают деньги семье на похороны.',
-    choices: [
-      { label: 'Передать 2 000 ₴', cost: 2000, effect: { careerTrust: 5, empathy: 4, socialTrust: 3 }, memory: 'Помог со сбором на похороны коллеги' },
-      { label: 'Передать 5 000 ₴', cost: 5000, effect: { careerTrust: 8, empathy: 7, socialTrust: 5 }, memory: 'Щедро помог семье умершего коллеги' },
-      { label: 'Выразить соболезнования без денег', effect: { careerTrust: 0, empathy: 1 }, memory: 'Выразил соболезнования коллегам' },
-      { label: 'Ничего не делать', effect: { careerTrust: -7, socialTrust: -5, empathy: -3 }, memory: 'Не участвовал в помощи семье умершего коллеги' },
-    ],
-  },
-  friend_help: {
-    id: 'friend_help',
-    title: 'Просьба о помощи',
-    text: 'Старый знакомый оказался в сложной ситуации и просит одолжить 10 000 ₴. Обещает вернуть позже.',
-    choices: [
-      { label: 'Одолжить 10 000 ₴', cost: 10000, effect: { socialTrust: 6, empathy: 5 }, memory: 'Одолжил деньги знакомому в трудной ситуации' },
-      { label: 'Дать 3 000 ₴ без возврата', cost: 3000, effect: { socialTrust: 4, empathy: 7 }, memory: 'Безвозмездно помог знакомому' },
-      { label: 'Отказать', effect: { empathy: -1 }, memory: 'Отказал знакомому в финансовой помощи' },
-    ],
-  },
-  health_warning: {
-    id: 'health_warning',
-    title: 'Самочувствие ухудшилось',
-    text: 'Последние дни вы быстро устаёте и хуже концентрируетесь. Возможно, стоит уделить внимание здоровью.',
-    choices: [
-      { label: 'Записаться к врачу — 1 500 ₴', cost: 1500, effect: { health: 4, stress: -4, longTermHealth: 2, time: 120 }, memory: 'Обратился к врачу при первых симптомах' },
-      { label: 'Взять выходной', effect: { energy: 15, fatigue: -18, stress: -7, mood: 3 }, memory: 'Взял выходной из-за плохого самочувствия' },
-      { label: 'Продолжить как обычно', effect: { health: -3, fatigue: 7, stress: 4, longTermHealth: -2 }, memory: 'Проигнорировал ухудшение здоровья' },
-    ],
-  },
-
-  social_invitation: {
-    id: 'social_invitation',
-    title: 'Приглашение после работы',
-    text: 'Коллеги собираются ненадолго зайти в кафе после смены. Можно поехать домой или присоединиться.',
-    choices: [
-      { label: 'Пойти с коллегами', effect: { time: 120, mood: 5, energy: -8, socialTrust: 3, careerTrust: 1 }, memory: 'Провёл вечер с коллегами после работы' },
-      { label: 'Вежливо отказаться', effect: { socialTrust: 0 }, memory: 'Отказался от встречи с коллегами' },
-      { label: 'Проигнорировать приглашение', effect: { socialTrust: -2 }, memory: 'Проигнорировал приглашение коллег' },
-    ],
-  },
-  old_friend_message: {
-    id: 'old_friend_message',
-    title: 'Сообщение от старого знакомого',
-    text: 'Человек, с которым вы давно не общались, неожиданно пишет и предлагает встретиться.',
-    choices: [
-      { label: 'Найти время для встречи', effect: { time: 150, mood: 5, socialTrust: 2, loneliness: -3 }, memory: 'Восстановил общение со старым знакомым' },
-      { label: 'Ответить, но отказаться', effect: { socialTrust: 0 }, memory: 'Ответил старому знакомому, но не встретился' },
-      { label: 'Не отвечать', effect: { socialTrust: -1, loneliness: 1 }, memory: 'Не ответил старому знакомому' },
-    ],
-  },
-
-  promotion_chance: {
-    id: 'promotion_chance',
-    title: 'Освободилась должность',
-    text: 'В компании освободилась более высокая позиция. Руководство обсуждает кандидатов внутри коллектива.',
-    choices: [
-      { label: 'Поговорить с руководителем', effect: { stress: 3 }, memory: 'Проявил инициативу при открытии вакансии', special: 'promotion_try' },
-      { label: 'Не вмешиваться', effect: {}, memory: 'Не стал претендовать на повышение' },
-    ],
-  },
+const EVENTS={
+ family_dinner:{id:'family_dinner',cat:'Семья',title:'Семейный ужин',text:'Мама приглашает приехать вечером. Последнее время вы виделись нечасто.',cond:g=>g.relatives.mother?.alive,choices:[
+  {label:'Приехать',direct:{time:180,energy:-7},hidden:{familyBond:6,mood:7},memory:'Приехал на семейный ужин'},
+  {label:'Сказать, что занят',direct:{},hidden:{familyBond:-3,reliability:-1},memory:'Отказался от семейного ужина'},
+  {label:'Не отвечать',direct:{},hidden:{familyBond:-7,loneliness:2},memory:'Не ответил семье'}
+ ]},
+ mother_help:{id:'mother_help',cat:'Семья',title:'Маме нужна помощь',text:'Мама просит помочь с покупками и домашними делами.',cond:g=>g.relatives.mother?.alive,choices:[
+  {label:'Помочь',direct:{time:150,energy:-9},hidden:{familyBond:7,empathy:3,mood:2},memory:'Помог маме с домашними делами'},
+  {label:'Заказать доставку',direct:{cash:-550},hidden:{familyBond:3,empathy:1},memory:'Оплатил доставку для мамы'},
+  {label:'Отказать',direct:{},hidden:{familyBond:-5},memory:'Отказал маме в помощи'}
+ ]},
+ grandmother_medicine:{id:'grandmother_medicine',cat:'Семья',title:'Лекарства для бабушки',text:'Бабушке нужно купить лекарства. В семье обсуждают, кто сможет помочь.',cond:g=>g.relatives.grandmother?.alive,choices:[
+  {label:'Купить лекарства',direct:{cash:-1800,time:60},hidden:{familyBond:6,empathy:5},memory:'Купил лекарства бабушке'},
+  {label:'Скинуться частично',direct:{cash:-700},hidden:{familyBond:3,empathy:2},memory:'Частично помог с лекарствами бабушке'},
+  {label:'Не участвовать',direct:{},hidden:{familyBond:-4,empathy:-2},memory:'Не участвовал в покупке лекарств бабушке'}
+ ]},
+ coworker_funeral:{id:'coworker_funeral',cat:'Работа',title:'Сбор на похороны коллеги',text:'Умер сотрудник компании, который занимал должность выше вашей. Коллеги собирают деньги семье.',cond:g=>!!g.career.companyId,choices:[
+  {label:'Передать 2 000 ₴',direct:{cash:-2000},hidden:{careerTrust:5,empathy:4,socialTrust:3},memory:'Помог семье умершего коллеги'},
+  {label:'Передать 5 000 ₴',direct:{cash:-5000},hidden:{careerTrust:8,empathy:7,socialTrust:5},memory:'Щедро помог семье умершего коллеги'},
+  {label:'Только выразить соболезнования',direct:{},hidden:{empathy:1},memory:'Выразил соболезнования коллегам'},
+  {label:'Ничего не делать',direct:{},hidden:{careerTrust:-7,socialTrust:-5,empathy:-3},memory:'Не участвовал в помощи семье коллеги'}
+ ]},
+ colleague_shift:{id:'colleague_shift',cat:'Работа',title:'Коллега просит подменить',text:'Коллега просит выйти вместо него в ваш выходной.',cond:g=>!!g.career.companyId,choices:[
+  {label:'Согласиться',direct:{time:480,energy:-24},hidden:{socialTrust:6,careerTrust:2,stress:4},memory:'Подменил коллегу в выходной'},
+  {label:'Отказать',direct:{},hidden:{socialTrust:-1},memory:'Отказался подменять коллегу'}
+ ]},
+ boss_overtime:{id:'boss_overtime',cat:'Работа',title:'Начальник просит задержаться',text:'Перед важным дедлайном начальник просит остаться ещё на несколько часов.',cond:g=>!!g.career.companyId,choices:[
+  {label:'Остаться',direct:{time:180,energy:-12},hidden:{careerTrust:5,burnout:3,stress:5},memory:'Остался работать сверхурочно'},
+  {label:'Отказаться',direct:{},hidden:{careerTrust:-2,stress:-1},memory:'Отказался от сверхурочной работы'}
+ ]},
+ absence:{id:'absence',cat:'Работа',title:'Разговор после прогула',text:'Руководитель хочет понять, почему вы не вышли на обязательную смену.',cond:g=>!!g.career.companyId,choices:[
+  {label:'Честно признать ошибку',direct:{},hidden:{reliability:1,careerTrust:-2},memory:'Признал ошибку после прогула'},
+  {label:'Сказать, что заболел',direct:{},hidden:{reliability:-3,careerTrust:-1},memory:'Сослался на болезнь после прогула'},
+  {label:'Сослаться на семью',direct:{},hidden:{careerTrust:-1},memory:'Объяснил прогул семейными обстоятельствами'},
+  {label:'Не объяснять',direct:{},hidden:{reliability:-5,careerTrust:-6},memory:'Отказался объяснять прогул'}
+ ]},
+ client_praise:{id:'client_praise',cat:'Работа',title:'Похвала клиента',text:'Клиент отдельно отметил вашу работу и написал благодарность компании.',cond:g=>!!g.career.companyId,choices:[
+  {label:'Принять как рабочий момент',direct:{},hidden:{careerTrust:3,reputation:2,mood:3},memory:'Получил благодарность клиента'},
+  {label:'Попросить начальника учесть отзыв',direct:{},hidden:{careerTrust:2,charisma:.4,stress:1},memory:'Использовал отзыв клиента в разговоре о карьере'}
+ ]},
+ friend_help:{id:'friend_help',cat:'Социальное',title:'Друг просит денег',text:'Знакомый оказался в сложной ситуации и просит одолжить 10 000 ₴.',cond:()=>true,choices:[
+  {label:'Одолжить 10 000 ₴',direct:{cash:-10000},hidden:{socialTrust:6,empathy:5},memory:'Одолжил деньги знакомому'},
+  {label:'Дать 3 000 ₴ без возврата',direct:{cash:-3000},hidden:{socialTrust:4,empathy:7},memory:'Безвозмездно помог знакомому'},
+  {label:'Отказать',direct:{},hidden:{empathy:-1},memory:'Отказал знакомому в финансовой помощи'}
+ ]},
+ old_friend:{id:'old_friend',cat:'Социальное',title:'Сообщение от старого знакомого',text:'Человек, с которым вы давно не общались, предлагает встретиться.',cond:()=>true,choices:[
+  {label:'Встретиться',direct:{time:150,cash:-350,energy:-6},hidden:{socialTrust:4,charisma:.3,mood:5,loneliness:-4},memory:'Встретился со старым знакомым'},
+  {label:'Перенести встречу',direct:{},hidden:{socialTrust:-1},memory:'Перенёс встречу со знакомым'},
+  {label:'Игнорировать',direct:{},hidden:{socialTrust:-3,loneliness:2},memory:'Проигнорировал старого знакомого'}
+ ]},
+ networking:{id:'networking',cat:'Социальное',title:'Деловая встреча',text:'Знакомый зовёт на небольшое профессиональное мероприятие.',cond:g=>g.charisma>=10,choices:[
+  {label:'Пойти',direct:{cash:-650,time:180,energy:-8},hidden:{charisma:.5,socialTrust:3,careerTrust:1},memory:'Посетил профессиональное мероприятие'},
+  {label:'Не идти',direct:{},hidden:{},memory:'Пропустил профессиональное мероприятие'}
+ ]},
+ health:{id:'health',cat:'Здоровье',title:'Самочувствие ухудшилось',text:'Последние дни вы быстро устаёте и хуже концентрируетесь.',cond:g=>g.health<78||g.fatigue>62||g.stress>65,choices:[
+  {label:'Записаться к врачу',direct:{cash:-1500,time:120},hidden:{health:4,stress:-4,longTermHealth:2},memory:'Обратился к врачу при первых симптомах'},
+  {label:'Взять день отдыха',direct:{time:480},hidden:{energy:18,fatigue:-20,stress:-8,mood:4},memory:'Взял день отдыха из-за самочувствия'},
+  {label:'Игнорировать',direct:{},hidden:{health:-3,fatigue:7,stress:4,longTermHealth:-2},memory:'Проигнорировал ухудшение здоровья'}
+ ]},
+ dental:{id:'dental',cat:'Здоровье',title:'Заболел зуб',text:'Боль пока терпимая, но сама проблема вряд ли исчезнет.',cond:()=>true,choices:[
+  {label:'Пойти к стоматологу',direct:{cash:-3200,time:150},hidden:{health:2,stress:-3},memory:'Вовремя сходил к стоматологу'},
+  {label:'Купить обезболивающее',direct:{cash:-240},hidden:{health:-.5,stress:-1},memory:'Отложил лечение зуба'},
+  {label:'Терпеть',direct:{},hidden:{health:-2,stress:4,mood:-4},memory:'Игнорировал зубную боль'}
+ ]},
+ phone_break:{id:'phone_break',cat:'Имущество',title:'Телефон начал сбоить',text:'Телефон выключается и иногда не принимает звонки.',cond:g=>!!g.phoneId&&g.phoneCondition<55,choices:[
+  {label:'Ремонт',direct:{cash:-1200,time:90},special:'repair_phone',memory:'Отремонтировал телефон'},
+  {label:'Пока пользоваться так',direct:{},hidden:{stress:2},memory:'Отложил ремонт телефона'}
+ ]},
+ car_break:{id:'car_break',cat:'Автомобиль',title:'Проблема с автомобилем',text:'Во время поездки появился посторонний звук.',cond:g=>!!g.activeCarId,choices:[
+  {label:'Диагностика и ремонт',direct:{cash:-6500,time:180},special:'repair_car',memory:'Сразу отремонтировал автомобиль'},
+  {label:'Продолжить ездить',direct:{},hidden:{stress:2},special:'damage_car',memory:'Продолжил ездить с неисправностью'}
+ ]},
+ fine:{id:'fine',cat:'Автомобиль',title:'Штраф за парковку',text:'После поездки вы обнаружили постановление о штрафе.',cond:g=>!!g.activeCarId,choices:[
+  {label:'Оплатить',direct:{cash:-680},hidden:{financialDiscipline:1},memory:'Оплатил штраф за парковку'},
+  {label:'Отложить',direct:{},hidden:{financialDiscipline:-2,stress:2},memory:'Отложил оплату штрафа'}
+ ]},
+ rent:{id:'rent',cat:'Жильё',title:'Повышение аренды',text:'Арендодатель сообщает, что со следующего месяца цена будет выше.',cond:g=>['room','studio'].includes(g.housingId),choices:[
+  {label:'Согласиться',direct:{},hidden:{stress:2},memory:'Принял повышение аренды'},
+  {label:'Попробовать договориться',direct:{time:45,energy:-2},hidden:{charisma:.2},memory:'Торговался с арендодателем'},
+  {label:'Съехать к родителям',direct:{},special:'parents',memory:'Решил съехать с аренды'}
+ ]},
+ business_break:{id:'business_break',cat:'Бизнес',title:'Сломалось оборудование',text:'В одном из ваших бизнесов оборудование требует ремонта.',cond:g=>g.businesses.length>0,choices:[
+  {label:'Нормальный ремонт',direct:{cash:-12000},special:'biz_good',memory:'Оплатил нормальный ремонт бизнеса'},
+  {label:'Дешёвый ремонт',direct:{cash:-4500},special:'biz_cheap',memory:'Сэкономил на ремонте бизнеса'},
+  {label:'Отложить',direct:{},special:'biz_bad',hidden:{stress:4},memory:'Отложил ремонт оборудования'}
+ ]},
+ employee:{id:'employee',cat:'Бизнес',title:'Сотрудник просит повышение',text:'Один из ключевых сотрудников считает, что его зарплата не соответствует нагрузке.',cond:g=>g.businesses.length>0,choices:[
+  {label:'Повысить зарплату',direct:{cash:-5000},hidden:{socialTrust:3},memory:'Повысил зарплату сотруднику'},
+  {label:'Обсудить через месяц',direct:{time:60},hidden:{charisma:.2,socialTrust:1},memory:'Отложил разговор о зарплате сотрудника'},
+  {label:'Отказать',direct:{},hidden:{socialTrust:-3},memory:'Отказал сотруднику в повышении'}
+ ]},
+ food:{id:'food',cat:'Здоровье',title:'Питание даёт о себе знать',text:'Организм всё хуже переносит нерегулярное и дешёвое питание.',cond:g=>g.hidden.nutritionHistory<38,choices:[
+  {label:'Улучшить питание',direct:{cash:-800},hidden:{nutritionHistory:6,health:2,mood:2},memory:'Решил улучшить питание'},
+  {label:'Ничего не менять',direct:{},hidden:{health:-2,stress:2},memory:'Не стал менять плохое питание'}
+ ]},
+ referral:{id:'referral',cat:'Карьера',title:'Неожиданная рекомендация',text:'Знакомый услышал о вакансии и готов порекомендовать вас.',cond:g=>g.hidden.socialTrust>58,choices:[
+  {label:'Попросить познакомить',direct:{time:60},hidden:{reputation:2,careerTrust:2},memory:'Использовал рекомендацию знакомого'},
+  {label:'Не менять планы',direct:{},hidden:{},memory:'Отказался от карьерной рекомендации'}
+ ]}
 };
 
-function deepMerge(base, saved) {
-  if (!saved) return base;
-  const out = { ...base, ...saved };
-  out.hidden = { ...base.hidden, ...(saved.hidden || {}) };
-  out.monthly = { ...base.monthly, ...(saved.monthly || {}) };
-  out.stats = { ...base.stats, ...(saved.stats || {}) };
-  out.relatives = { ...base.relatives, ...(saved.relatives || {}) };
-  out.people = { ...base.people, ...(saved.people || {}) };
-  out.borrowingHistory = { ...base.borrowingHistory, ...(saved.borrowingHistory || {}) };
-  out.familyMealsToday = saved.familyMealsToday || 0;
-  out.sideGigDoneToday = { ...(saved.sideGigDoneToday || {}) };
-  out.socialDoneToday = { ...(saved.socialDoneToday || {}) };
-  out.socialStats = { ...base.socialStats, ...(saved.socialStats || {}) };
-  out.properties = (saved.properties || []).map(p => ({ condition: 100, ...p }));
-  out.businesses = (saved.businesses || []).map(b => ({ condition: 100, ...b }));
+const companyById=id=>COMPANIES.find(x=>x.id===id)||null;
+const roleByIds=(cid,rid)=>companyById(cid)?.roles.find(x=>x.id===rid)||null;
+const phoneById=id=>PHONES.find(x=>x.id===id)||null;
+const carById=id=>CARS.find(x=>x.id===id)||null;
+const housingById=id=>HOUSING.find(x=>x.id===id)||HOUSING[0];
+const activeCarState=g=>g.cars.find(x=>x.uid===g.activeCarId)||null;
+const activeCarBase=g=>{const a=activeCarState(g);return a?carById(a.catalogId):null;};
+const phonePerf=g=>{const p=phoneById(g.phoneId);return p?p.performance*(g.phoneCondition/100):0;};
+const scheduled=g=>!!g.career.companyId&&[1,2,3,4,5].includes(weekdayIndex(g.date));
+const directText=d=>{const a=[];if(d?.cash)a.push(`${d.cash<0?'−':'+'}${money(Math.abs(d.cash))} ₴`);if(d?.energy)a.push(`${d.energy<0?'−':'+'}${Math.abs(d.energy)} энергии`);if(d?.time)a.push(d.time>=60?`${(d.time/60).toFixed(d.time%60?1:0)} ч`:`${d.time} мин`);return a.length?a.join(' · '):'Без прямых затрат';};
 
-  const savedPortfolio = saved.investmentPortfolio || {};
-  out.investmentPortfolio = {
-    ...base.investmentPortfolio,
-    ...savedPortfolio,
-    holdings: { ...(savedPortfolio.holdings || {}) },
-    prices: { ...(savedPortfolio.prices || {}) },
-    deposits: [...(savedPortfolio.deposits || [])],
-    bonds: [...(savedPortfolio.bonds || [])],
-    lastMarketMove: { ...(savedPortfolio.lastMarketMove || {}) },
-  };
+function mergeSave(s){
+ if(!s)return START;
+ const g={...START,...s,hidden:{...START.hidden,...(s.hidden||{})},career:{...START.career,...(s.career||{}),attendance:{...START.career.attendance,...(s.career?.attendance||{})}},monthly:{...START.monthly,...(s.monthly||{})},stats:{...START.stats,...(s.stats||{})},relatives:{...START.relatives,...(s.relatives||{})},investmentPortfolio:{...START.investmentPortfolio,...(s.investmentPortfolio||{})}};
+ if(!g.career.companyId&&s.jobId){const m={courier:['nova','np1'],seller:['atb','atb1'],operator:['kyivstar','ks1'],sales_manager:['rozetka','rz3'],senior_manager:['rozetka','rz4'],director:['rozetka','rz4']}[s.jobId];if(m){g.career.companyId=m[0];g.career.roleId=m[1];}}
+ if(!s.investmentPortfolio&&typeof s.investments==='number')g.investmentPortfolio={marketValue:s.investments,lastMonthReturn:0};
+ return g;
+}
 
-  // v9 and earlier had one number called investments.
-  // Preserve that money instead of deleting it during migration.
-  if (!saved.investmentPortfolio && Number(saved.investments || 0) > 0) {
-    out.investmentPortfolio.legacyValue = Number(saved.investments || 0);
+function apply(g,c={}){
+ const h={...g.hidden};
+ Object.keys(h).forEach(k=>{if(typeof c[k]==='number')h[k]=clamp(h[k]+c[k]);});
+ return {...g,health:clamp(g.health+(c.health||0)),energy:clamp(g.energy+(c.energy||0)),fatigue:clamp(g.fatigue+(c.fatigue||0)),satiety:clamp(g.satiety+(c.satiety||0)),mood:clamp(g.mood+(c.mood||0)),stress:clamp(g.stress+(c.stress||0)),intelligence:clamp(g.intelligence+(c.intelligence||0)),charisma:clamp(g.charisma+(c.charisma||0)),professionalSkill:clamp(g.professionalSkill+(c.skill||0)),reputation:clamp(g.reputation+(c.reputation||0)),hidden:h};
+}
+
+function commute(g){
+ const s=activeCarState(g),b=activeCarBase(g);
+ if(s&&b&&s.condition>20)return{type:'car',minutes:Math.max(20,42-Math.round(b.comfort/5)+(s.condition<45?12:0)),cash:Math.round(120+b.monthly/120),energy:Math.max(1,7-Math.round(b.comfort/25)),stress:s.condition<45?3:Math.max(0,3-Math.round(b.comfort/40))};
+ return{type:'public',minutes:70,cash:60,energy:7,stress:4};
+}
+
+function worth(g){
+ const cars=g.cars.reduce((s,o)=>{const b=carById(o.catalogId);return s+(b?b.price*(o.condition/100)*.7:0);},0);
+ const props=g.properties.reduce((s,o)=>s+(housingById(o.catalogId)?.price||0),0);
+ const biz=g.businesses.reduce((s,o)=>{const b=BUSINESSES.find(x=>x.id===o.catalogId);return s+(b?b.price*((o.condition||100)/100)*.75:0);},0);
+ const p=phoneById(g.phoneId);const pv=p?p.price*(g.phoneCondition/100)*.28:0;
+ const debt=g.debts.filter(x=>x.status==='active').reduce((s,x)=>s+x.balance,0);
+ return Math.round(g.cash+g.bank+cars+props+biz+(g.investmentPortfolio.marketValue||0)+pv-debt);
+}
+
+function App(){
+ const [game,setGame]=useState(START),[screen,setScreen]=useState('today'),[loaded,setLoaded]=useState(false),[sleepOpen,setSleepOpen]=useState(false),[eventOpen,setEventOpen]=useState(false),[marketTab,setMarketTab]=useState('phones');
+ const timer=useRef(null);
+
+ useEffect(()=>{(async()=>{try{const raw=await AsyncStorage.getItem(SAVE_KEY);if(raw){const g=mergeSave(JSON.parse(raw));setGame(g);if(g.pendingEventId)setEventOpen(true);}}catch(e){console.log(e);}finally{setLoaded(true);}})();},[]);
+ useEffect(()=>{if(!loaded)return;if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>AsyncStorage.setItem(SAVE_KEY,JSON.stringify(game)).catch(console.log),250);return()=>timer.current&&clearTimeout(timer.current);},[game,loaded]);
+ useEffect(()=>{if(game.pendingEventId)setEventOpen(true);},[game.pendingEventId]);
+
+ const company=useMemo(()=>companyById(game.career.companyId),[game.career.companyId]);
+ const role=useMemo(()=>roleByIds(game.career.companyId,game.career.roleId),[game.career.companyId,game.career.roleId]);
+ const phone=useMemo(()=>phoneById(game.phoneId),[game.phoneId]);
+ const housing=useMemo(()=>housingById(game.housingId),[game.housingId]);
+ const capital=useMemo(()=>worth(game),[game]);
+
+ const patch=fn=>setGame(g=>typeof fn==='function'?fn(g):({...g,...fn}));
+
+ const eventify=(g,force=false)=>{
+  if(g.pendingEventId)return g;
+  const gap=g.stats.daysLived-g.lastEventDay;
+  if(!force&&gap<2)return g;
+  if(!force&&Math.random()>.18)return g;
+  const recent=new Set((g.eventHistory||[]).slice(-6));
+  let pool=Object.values(EVENTS).filter(e=>{try{return e.cond(g)&&!recent.has(e.id);}catch{return false;}});
+  if(!pool.length)pool=Object.values(EVENTS).filter(e=>{try{return e.cond(g);}catch{return false;}});
+  if(!pool.length)return g;
+  const e=pool[Math.floor(Math.random()*pool.length)];
+  return {...g,pendingEventId:e.id,lastEventDay:g.stats.daysLived,eventHistory:[...(g.eventHistory||[]),e.id].slice(-30),stats:{...g.stats,eventsSeen:g.stats.eventsSeen+1}};
+ };
+
+ const processDebts=g=>{
+  const today=serial(g.date);let ng={...g};
+  ng.debts=g.debts.map(d=>{if(d.status!=='active')return d;let x={...d};if(x.kind==='micro'){const i=Math.round(x.balance*(x.dailyRate||.012));x.balance+=i;}if(today>x.dueSerial&&!x.lateMarked){x.lateMarked=true;ng=apply(ng,{creditTrust:-7,financialDiscipline:-6,stress:5,familyBond:x.lender==='mother'?-5:0,careerTrust:x.lender==='coworker'?-5:0});}return x;});
+  return ng;
+ };
+
+ const processMonth=g=>{
+  let ng={...g};const r=roleByIds(g.career.companyId,g.career.roleId),h=housingById(g.housingId),car=activeCarBase(g),p=phoneById(g.phoneId);
+  let salary=0,biz=0,inv=0,expenses=0;
+  if(r&&g.career.workDaysMonth>0){salary=Math.round(r.salary*Math.min(1,g.career.workDaysMonth/21));ng.cash+=salary;}
+  ng.businesses=g.businesses.map(o=>{const b=BUSINESSES.find(x=>x.id===o.catalogId);if(!b)return o;const net=Math.round(b.daily*30*(.88+Math.random()*.24)*(1-b.expenseRate)*((o.condition||100)/100));biz+=net;return{...o,lastMonthProfit:net,condition:clamp((o.condition||100)-.7,25,100)};});
+  ng.cash+=biz;
+  if(g.investmentPortfolio.marketValue>0){inv=Math.round(g.investmentPortfolio.marketValue*((Math.random()*.10)-.035));ng.investmentPortfolio={...g.investmentPortfolio,marketValue:Math.max(0,g.investmentPortfolio.marketValue+inv),lastMonthReturn:inv};}
+  if(h.type==='family'){const contribution=r?Math.min(6000,Math.round(r.salary*.08)):0;expenses+=contribution;ng.stats={...ng.stats,familySupportValue:ng.stats.familySupportValue+Math.max(0,5000-contribution)};}else expenses+=h.monthly;
+  if(car)expenses+=car.monthly;if(p)expenses+=p.monthly;ng.cash-=expenses;
+  ng.career={...ng.career,companyMonths:r?ng.career.companyMonths+1:0,roleMonths:r?ng.career.roleMonths+1:0,workDaysMonth:0,attendance:{...ng.career.attendance,perfectMonths:ng.career.attendance.perfectMonths+(r&&ng.career.attendance.absences===0?1:0)}};
+  ng.monthly={...ng.monthly,salary,business:biz,investments:inv,housing:h.type==='family'?0:h.monthly,transport:car?car.monthly:0};
+  ng.stats={...ng.stats,totalEarned:ng.stats.totalEarned+salary+biz+Math.max(0,inv),totalSpent:ng.stats.totalSpent+expenses};
+  return ng;
+ };
+
+ const absence=g=>{
+  if(!scheduled(g)||g.career.workedToday||g.career.excusedToday)return g;
+  let ng={...g,career:{...g.career,attendance:{...g.career.attendance,absences:g.career.attendance.absences+1,warnings:g.career.attendance.warnings+(g.career.attendance.absences>=1?1:0),streak:0}}};
+  ng=apply(ng,{careerTrust:-6,reliability:-5,reputation:-1,stress:3});
+  ng.memories=[...ng.memories,{date:formatDate(g.date),age:g.age,text:'Не вышел на обязательную рабочую смену'}].slice(-100);
+  if(!ng.pendingEventId)ng={...ng,pendingEventId:'absence',lastEventDay:ng.stats.daysLived,stats:{...ng.stats,eventsSeen:ng.stats.eventsSeen+1}};
+  if(ng.career.attendance.absences>=4){const c=companyById(ng.career.companyId);ng.memories=[...ng.memories,{date:formatDate(g.date),age:g.age,text:`Уволен из ${c?.name||'компании'} за систематические невыходы`}].slice(-100);ng.career={...START.career,attendance:{...START.career.attendance,absences:ng.career.attendance.absences,warnings:ng.career.attendance.warnings}};ng=apply(ng,{careerTrust:-10,reputation:-4});}
+  return ng;
+ };
+
+ const mortality=g=>{
+  if(!g.alive||g.age<45)return g;
+  const quality=g.health*.35+g.hidden.longTermHealth*.35+g.fitness*.15+(100-g.hidden.lifeStress)*.15;
+  let annual=.002;
+  if(g.age>=55)annual+=(g.age-54)*.0011;
+  if(g.age>=70)annual+=(g.age-69)*.0032;
+  if(g.age>=82)annual+=(g.age-81)*.012;
+  annual*=Math.max(.45,1.8-quality/100);
+  if(g.health<30)annual*=2.6;
+  if(g.hidden.longTermHealth<35)annual*=2.0;
+  if(Math.random()<annual/365){
+    return {...g,alive:false,causeOfDeath:(g.health<30||g.hidden.longTermHealth<40)?'осложнения, связанные с состоянием здоровья':'естественные причины'};
   }
-  out.investments = 0;
+  return g;
+ };
 
-  return out;
+ const newDay=g=>{
+  let ng=absence(g),nd=nextDate(ng.date),age=ng.age;if(nd.day===ng.birthday.day&&nd.month===ng.birthday.month)age++;
+  ng={...ng,date:nd,age,familyMealsToday:0,sideGigDoneToday:{},career:{...ng.career,workedToday:false,excusedToday:false},stats:{...ng.stats,daysLived:ng.stats.daysLived+1},phoneCondition:ng.phoneId?clamp(ng.phoneCondition-.015):0};
+  if(ng.satiety<20)ng=apply(ng,{health:-.7,longTermHealth:-.18,nutritionHistory:-.3});
+  if(ng.fatigue>78)ng=apply(ng,{health:-.35,longTermHealth:-.12,burnout:.25});
+  if(ng.stress>78)ng=apply(ng,{health:-.25,lifeStress:.22,burnout:.2});
+  ng=processDebts(ng);if(nd.day===1)ng=processMonth(ng);ng=mortality(ng);return ng.alive?eventify(ng):ng;
+ };
+
+ const advance=(g,minutes)=>{
+  let ng={...g},left=minutes;
+  while(left>0){const till=1440-ng.timeMinutes,s=Math.min(left,till),hours=s/60;ng=apply(ng,{satiety:-hours*1.45,fatigue:hours*.6,energy:-hours*.38});if(ng.satiety<30)ng=apply(ng,{energy:-hours*.7,mood:-hours*.3,stress:hours*.25});if(ng.satiety<12)ng=apply(ng,{health:-hours*.24,longTermHealth:-hours*.035,nutritionHistory:-hours*.08});ng.timeMinutes+=s;left-=s;if(ng.timeMinutes>=1440){ng.timeMinutes=0;ng=newDay(ng);}if(ng.pendingEventId&&left>0)break;}
+  return ng;
+ };
+
+ const workPure=g=>{
+  const r=roleByIds(g.career.companyId,g.career.roleId);if(!r)return g;const tr=commute(g),need=22+tr.energy*2;
+  if(g.energy<need||g.fatigue>91||g.satiety<10)return g;
+  let ng={...g,cash:g.cash-tr.cash*2,career:{...g.career,workedToday:true,workDaysMonth:g.career.workDaysMonth+1,attendance:{...g.career.attendance,streak:g.career.attendance.streak+1}}};
+  ng=apply(ng,{energy:-need,fatigue:18,satiety:-12,stress:8+tr.stress,skill:.35*(g.fatigue>70?.6:1)*(phonePerf(g)<15?.8:1),charisma:['Ритейл','Телеком','Банк'].includes(companyById(g.career.companyId)?.sector)?.04:.015,reputation:.08,careerTrust:.12});
+  const cs=activeCarState(ng),cb=activeCarBase(ng);if(cs&&cb){ng.cars=ng.cars.map(c=>c.uid===cs.uid?{...c,mileage:(c.mileage||0)+34,condition:clamp(c.condition-.02,15,100)}:c);const risk=((100-cb.reliability)/100)*((100-cs.condition)/100)*.08;if(!ng.pendingEventId&&Math.random()<risk)ng.pendingEventId='car_break';}
+  if(ng.phoneId&&ng.phoneCondition<35&&!ng.pendingEventId&&Math.random()<.035)ng.pendingEventId='phone_break';
+  return advance(ng,r.hours*60+tr.minutes*2);
+ };
+
+ const doWork=()=>{if(!role)return Alert.alert('Работа','Сначала выбери компанию и должность.');if(!scheduled(game))return Alert.alert('Выходной','Сегодня по графику нет смены.');if(game.career.workedToday)return Alert.alert('Работа','Смена уже отработана.');if(game.energy<30||game.satiety<10)return Alert.alert('Не хватает сил','Сначала поешь или отдохни.');patch(workPure);};
+
+ const eat=k=>{const o={cheap:[120,29,0,-.15,25],normal:[280,46,2,.12,40],good:[650,58,5,.3,60]}[k];if(game.cash<o[0])return Alert.alert('Недостаточно денег');patch(g=>advance(apply({...g,cash:g.cash-o[0],monthly:{...g.monthly,food:g.monthly.food+o[0]},stats:{...g.stats,totalSpent:g.stats.totalSpent+o[0]}},{satiety:o[1],mood:o[2],nutritionHistory:o[3]}),o[4]));};
+
+ const eatHome=()=>{if(game.housingId!=='parents')return;const max=game.relatives.mother?.relationship>=65?3:2;if(game.familyMealsToday>=max)return Alert.alert('На сегодня хватит');patch(g=>advance(apply({...g,familyMealsToday:g.familyMealsToday+1,stats:{...g.stats,familySupportValue:g.stats.familySupportValue+250}},{satiety:48,mood:2,familyBond:.3,nutritionHistory:.1}),40));};
+
+ const sleep=h=>patch(g=>{const comfort=housingById(g.housingId).comfort/100,q=(h>=7&&h<=9?1:h>=6?.78:.55)*(.72+comfort*.35);return advance(apply(g,{energy:82*q,fatigue:-72*q,mood:h>=7?2:-3,stress:-9*q,health:h>=7?.3:-.3,longTermHealth:h>=7?.09:-.14,sleepHistory:h>=7&&h<=9?.15:-.18}),h*60);});
+
+ const study=()=>{if(game.energy<20||game.satiety<12)return Alert.alert('Не хватает сил');patch(g=>advance(apply(g,{energy:-18,fatigue:11,intelligence:.6,stress:2}),120));};
+ const workout=()=>{if(game.energy<24||game.satiety<18)return Alert.alert('Не хватает сил');patch(g=>{let n=advance(apply(g,{energy:-22,fatigue:15,satiety:-8,health:.25,stress:-4,mood:3}),90);n.fitness=clamp(n.fitness+.8);return n;});};
+
+ const gigOK=x=>{const r=x.req||{};return(!r.fitness||game.fitness>=r.fitness)&&(!r.intelligence||game.intelligence>=r.intelligence)&&(!r.charisma||game.charisma>=r.charisma)&&(!r.skill||game.professionalSkill>=r.skill)&&(!r.car||!!activeCarState(game))&&(!r.phone||phonePerf(game)>=r.phone);};
+ const doGig=x=>{if(!gigOK(x)||game.sideGigDoneToday[x.id])return;if(game.energy<x.energy||game.satiety<10)return Alert.alert('Не хватает сил');const pay=Math.round(x.pay*(.94+Math.random()*.12));patch(g=>advance(apply({...g,cash:g.cash+pay,sideGigDoneToday:{...g.sideGigDoneToday,[x.id]:true},monthly:{...g.monthly,sideGigs:g.monthly.sideGigs+pay},stats:{...g.stats,totalEarned:g.stats.totalEarned+pay,sideGigEarned:g.stats.sideGigEarned+pay}},{energy:-x.energy,fatigue:x.energy*.7,satiety:-x.hours*2,stress:1,charisma:['waiter','taxi','social'].includes(x.id)?.08:0,skill:['web','handyman','social'].includes(x.id)?.15:0}),x.hours*60));};
+
+ const roleOK=(c,r)=>game.intelligence>=(r.req.i||0)&&game.charisma>=(r.req.c||0)&&game.professionalSkill>=(r.req.s||0)&&game.reputation>=(r.req.r||0)&&game.career.companyMonths>=(r.min||0)&&phonePerf(game)>=(r.phone||0);
+ const join=(c,r)=>{const same=game.career.companyId===c.id;if(!same&&r.min)return Alert.alert('Внутренняя должность','Сначала устройся в эту компанию.');if(!roleOK(c,r))return Alert.alert('Требования не выполнены');patch(g=>({...g,career:{...g.career,companyId:c.id,roleId:r.id,companyMonths:same?g.career.companyMonths:0,roleMonths:0,workDaysMonth:0,workedToday:false,attendance:same?g.career.attendance:{...START.career.attendance}},stats:{...g.stats,jobsHeld:g.stats.jobsHeld+1},memories:[...g.memories,{date:formatDate(g.date),age:g.age,text:`${same?'Перешёл на должность':'Устроился'} ${r.name} в ${c.name}`}].slice(-100)}));};
+
+ const quit=()=>patch(g=>({...g,career:{...START.career},memories:[...g.memories,{date:formatDate(g.date),age:g.age,text:`Уволился из ${company?.name||'компании'}`}].slice(-100)}));
+
+ const buyPhone=p=>{if(game.cash<p.price)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-p.price,phoneId:p.id,phoneCondition:100}));};
+ const sellPhone=()=>{if(!phone)return;const v=Math.max(100,Math.round(phone.price*(game.phoneCondition/100)*.32));patch(g=>({...g,cash:g.cash+v,phoneId:null,phoneCondition:0}));};
+ const buyCar=c=>{if(game.cash<c.price)return Alert.alert('Недостаточно денег');patch(g=>{const id=uid('car');return{...g,cash:g.cash-c.price,cars:[...g.cars,{uid:id,catalogId:c.id,condition:100,mileage:0}],activeCarId:g.activeCarId||id};});};
+ const sellCar=o=>{const b=carById(o.catalogId);if(!b)return;const v=Math.round(b.price*(o.condition/100)*.67);patch(g=>({...g,cash:g.cash+v,cars:g.cars.filter(x=>x.uid!==o.uid),activeCarId:g.activeCarId===o.uid?null:g.activeCarId}));};
+
+ const chooseHousing=h=>{if(h.type==='family')return patch({housingId:'parents'});if(h.type==='rent')return patch({housingId:h.id});const owns=game.properties.some(p=>p.catalogId===h.id);if(owns)return patch({housingId:h.id});if(game.cash<h.price)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-h.price,housingId:h.id,properties:[...g.properties,{uid:uid('prop'),catalogId:h.id,condition:100}]}));};
+ const sellProp=o=>{const h=housingById(o.catalogId),v=Math.round(h.price*((o.condition||100)/100)*.88);patch(g=>({...g,cash:g.cash+v,properties:g.properties.filter(x=>x.uid!==o.uid),housingId:g.housingId===o.catalogId?(g.relatives.mother?.alive?'parents':'homeless'):g.housingId}));};
+ const buyBiz=b=>{if(game.cash<b.price)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-b.price,businesses:[...g.businesses,{uid:uid('biz'),catalogId:b.id,condition:100,lastMonthProfit:0}]}));};
+ const sellBiz=o=>{const b=BUSINESSES.find(x=>x.id===o.catalogId);if(!b)return;const v=Math.round(b.price*((o.condition||100)/100)*.68);patch(g=>({...g,cash:g.cash+v,businesses:g.businesses.filter(x=>x.uid!==o.uid)}));};
+
+ const borrow=(kind,amount)=>{const today=serial(game.date);if(kind==='mother'){if(!game.relatives.mother?.alive||game.relatives.mother.relationship<35)return Alert.alert('Мама не готова дать деньги');if(game.debts.some(d=>d.status==='active'&&d.lender==='mother'))return Alert.alert('Сначала верни старый долг');const max=Math.round(3000+game.relatives.mother.relationship*180);if(amount>max)return Alert.alert('Слишком большая сумма',`Лимит около ${money(max)} ₴`);patch(g=>({...g,cash:g.cash+amount,debts:[...g.debts,{uid:uid('debt'),kind:'social',lender:'mother',title:'Долг маме',balance:amount,dueSerial:today+60,status:'active'}]}));}
+  if(kind==='bank'){const max=Math.max(10000,Math.round((role?.salary||10000)*(2+game.hidden.creditTrust/35)));if(amount>max||game.hidden.creditTrust<32)return Alert.alert('Банк отказал');const total=Math.round(amount*(1+.19*180/365));patch(g=>({...g,cash:g.cash+amount,debts:[...g.debts,{uid:uid('debt'),kind:'bank',lender:'bank',title:'Банковский кредит',balance:total,dueSerial:today+180,status:'active'}]}));}
+  if(kind==='micro'){if(amount>20000)return Alert.alert('Лимит МФО 20 000 ₴');patch(g=>({...g,cash:g.cash+amount,debts:[...g.debts,{uid:uid('debt'),kind:'micro',lender:'mfo',title:'Микрозайм',balance:amount,dueSerial:today+14,status:'active',dailyRate:.012}]}));}
+ };
+ const repay=(d,a)=>{const pay=Math.min(a,d.balance,game.cash);if(pay<=0)return;patch(g=>({...g,cash:g.cash-pay,debts:g.debts.map(x=>x.uid===d.uid?{...x,balance:Math.max(0,x.balance-pay),status:x.balance-pay<=0?'closed':'active'}:x)}));};
+ const invest=a=>{if(game.cash<a)return Alert.alert('Недостаточно денег');patch(g=>({...g,cash:g.cash-a,investmentPortfolio:{...g.investmentPortfolio,marketValue:g.investmentPortfolio.marketValue+a}}));};
+
+ const resolveChoice=ch=>{const d=ch.direct||{};if(d.cash<0&&game.cash<Math.abs(d.cash))return Alert.alert('Недостаточно денег');patch(g=>{let n=apply({...g,cash:g.cash+(d.cash||0),pendingEventId:null},{energy:d.energy||0,...(ch.hidden||{})});if(ch.special==='repair_phone')n.phoneCondition=clamp(n.phoneCondition+40);if(ch.special==='parents')n.housingId=n.relatives.mother?.alive?'parents':'homeless';const ac=activeCarState(n);if(ac&&ch.special==='repair_car')n.cars=n.cars.map(x=>x.uid===ac.uid?{...x,condition:clamp(x.condition+35)}:x);if(ac&&ch.special==='damage_car')n.cars=n.cars.map(x=>x.uid===ac.uid?{...x,condition:clamp(x.condition-18)}:x);if(n.businesses.length&&ch.special?.startsWith('biz_'))n.businesses=n.businesses.map((x,i)=>i?x:{...x,condition:clamp((x.condition||100)+(ch.special==='biz_good'?30:ch.special==='biz_cheap'?12:-15))});n.memories=[...n.memories,{date:formatDate(n.date),age:n.age,text:ch.memory}].slice(-100);if(d.time)n=advance(n,d.time);return n;});setEventOpen(false);};
+
+ const autoDay=g=>{let n={...g};if(scheduled(n)&&!n.career.workedToday){const r=roleByIds(n.career.companyId,n.career.roleId);if(r&&n.energy>=35&&n.satiety>=15&&n.fatigue<86){if(n.satiety<45){if(n.housingId==='parents'&&n.relatives.mother?.alive)n=apply(n,{satiety:46});else if(n.cash>=280)n=apply({...n,cash:n.cash-280},{satiety:46});}n=workPure(n);}}if(n.pendingEventId)return n;if(n.satiety<40){if(n.housingId==='parents'&&n.relatives.mother?.alive)n=apply(n,{satiety:46});else if(n.cash>=280)n=apply({...n,cash:n.cash-280},{satiety:46});}if(n.pendingEventId)return n;const till=((1320-n.timeMinutes)+1440)%1440;if(till>0&&till<720)n=advance(n,till);if(n.pendingEventId)return n;n=apply(n,{energy:70,fatigue:-62,stress:-7,mood:1,longTermHealth:.05,sleepHistory:.1});return advance(n,480);};
+ const ff=mode=>patch(g=>{let n={...g},max=mode==='day'?1:mode==='week'?7:30;for(let i=0;i<max;i++){if(n.pendingEventId)break;n=autoDay(n);if(n.pendingEventId)break;if(mode==='event'){n=eventify(n,i>=2);if(n.pendingEventId)break;}}return n;});
+
+ const reset=()=>Alert.alert('Начать новую жизнь?','Весь прогресс будет удалён.',[{text:'Отмена'},{text:'Удалить',style:'destructive',onPress:async()=>{await AsyncStorage.removeItem(SAVE_KEY);setGame(START);setScreen('today');}}]);
+
+ if(!loaded)return <View style={styles.loading}><ActivityIndicator/><Text style={styles.loadingText}>Загрузка…</Text></View>;
+ if(!game.alive)return <SafeAreaView style={styles.app}><StatusBar barStyle="light-content"/><ScrollView contentContainerStyle={styles.content}><Text style={styles.kicker}>ЖИЗНЬ ЗАВЕРШЕНА</Text><Text style={[styles.hero,{fontSize:64,marginTop:20}]}>{game.age}</Text><Text style={styles.sub}>лет · {game.causeOfDeath||'естественные причины'}</Text><Section title="Итог"/><View style={styles.bigCard}><Row l1="Прожито дней" v1={`${game.stats.daysLived}`} l2="Капитал" v2={`${money(capital)} ₴`}/><View style={styles.divider}/><Text style={styles.small}>Решения, здоровье, стресс, питание, сон и качество жизни влияли на продолжительность жизни персонажа.</Text></View><Pressable style={styles.buy} onPress={reset}><Text style={styles.buyText}>Начать новую жизнь</Text></Pressable></ScrollView></SafeAreaView>;
+
+ const common={game,company,role,phone,housing,capital,doWork,eat,eatHome,sleep,study,workout,gigOK,doGig,join,quit,buyPhone,sellPhone,buyCar,sellCar,chooseHousing,sellProp,buyBiz,sellBiz,borrow,repay,invest,marketTab,setMarketTab,patch,ff,reset};
+
+ return <SafeAreaView style={styles.app}>
+  <StatusBar barStyle="light-content"/>
+  <Header game={game} onSleep={()=>setSleepOpen(true)}/>
+  <View style={styles.main}>
+   {screen==='today'&&<Today {...common}/>}
+   {screen==='career'&&<Career {...common}/>}
+   {screen==='finance'&&<Finance {...common}/>}
+   {screen==='market'&&<Market {...common}/>}
+   {screen==='assets'&&<Assets {...common}/>}
+  </View>
+  <Nav screen={screen} setScreen={setScreen}/>
+  <SleepModal visible={sleepOpen} game={game} onClose={()=>setSleepOpen(false)} onSleep={h=>{setSleepOpen(false);sleep(h);}}/>
+  <EventModal visible={eventOpen&&!!game.pendingEventId} event={EVENTS[game.pendingEventId]} onChoice={resolveChoice}/>
+ </SafeAreaView>;
 }
 
-function formatTime(minutes) {
-  const m = ((minutes % 1440) + 1440) % 1440;
-  const h = Math.floor(m / 60);
-  const mm = m % 60;
-  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+function Header({game,onSleep}){
+ const needs=[['Энергия',game.energy,false],['Сытость',game.satiety,false],['Здоровье',game.health,false],['Усталость',game.fatigue,true],['Стресс',game.stress,true],['Настроение',game.mood,false]];
+ return <View style={styles.header}>
+  <View style={styles.headerTop}>
+   <View style={{flex:1}}><Text style={styles.logo}>LIFE</Text><Text style={styles.headerDate}>{weekday(game.date)} · {formatDate(game.date)} · {formatTime(game.timeMinutes)}</Text></View>
+   <View style={styles.moneyBox}><Text style={styles.moneyLabel}>НАЛИЧНЫЕ</Text><Text style={styles.moneyValue}>{money(game.cash)} ₴</Text></View>
+   <Pressable style={styles.sleepBtn} onPress={onSleep}><Text style={styles.moon}>☾</Text><Text style={styles.sleepTxt}>Сон</Text></Pressable>
+  </View>
+  <View style={styles.needGrid}>{needs.map(([l,v,i])=><Need key={l} label={l} value={v} inverse={i}/>)}</View>
+ </View>;
+}
+function Need({label,value,inverse}){const v=clamp(value);let c=C.green;if(inverse){if(v>=75)c=C.red;else if(v>=45)c=C.yellow;}else{if(v<=28)c=C.red;else if(v<=55)c=C.yellow;}return <View style={styles.need}><View style={styles.needTop}><Text style={styles.needLabel}>{label}</Text><Text style={styles.needVal}>{Math.round(v)}%</Text></View><View style={styles.track}><View style={[styles.fill,{width:`${v}%`,backgroundColor:c}]}/></View></View>;}
+
+function Today({game,company,role,phone,housing,capital,doWork,eat,eatHome,study,workout,ff}){
+ const tr=commute(game),car=activeCarBase(game),debt=game.debts.filter(x=>x.status==='active').sort((a,b)=>a.dueSerial-b.dueSerial)[0];
+ return <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  <Text style={styles.kicker}>{weekday(game.date).toUpperCase()}</Text><Text style={styles.hero}>{game.age} лет</Text><Text style={styles.sub}>{company&&role?`${company.name} · ${role.name}`:'Постоянной работы нет'}</Text>
+  <View style={styles.bigCard}><Text style={styles.caption}>Чистый капитал</Text><Text style={styles.bigMoney}>{money(capital)} ₴</Text><View style={styles.divider}/><Row l1="Сегодня" v1={scheduled(game)?game.career.workedToday?'Смена отработана':'Рабочий день':'Выходной'} l2="Транспорт" v2={car?`${car.brand} ${car.model}`:'Общественный'}/></View>
+  <Section title="Быстрые действия" right={formatTime(game.timeMinutes)}/>
+  {scheduled(game)&&role&&<Action title={game.career.workedToday?'Смена отработана':`Работать · ${role.hours} ч`} sub={`${company.name} · дорога ${tr.minutes} мин`} meta={game.career.workedToday?'Готово':'Рабочая смена'} disabled={game.career.workedToday} onPress={doWork}/>}
+  <Action title="Самообразование" sub="2 часа · интеллект" meta="−18 энергии" onPress={study}/>
+  <Action title="Тренировка" sub="1 ч 30 мин · здоровье и форма" meta="−22 энергии" onPress={workout}/>
+  <Section title="Питание" right={`Сытость ${Math.round(game.satiety)}%`}/>
+  {game.housingId==='parents'&&<Action title="Поесть дома" sub={`За счёт семьи · ${game.familyMealsToday}/${game.relatives.mother?.relationship>=65?3:2}`} meta="Бесплатно" onPress={eatHome}/>}
+  <View style={styles.miniRow}><Mini title="Перекус" value="120 ₴" onPress={()=>eat('cheap')}/><Mini title="Обычная еда" value="280 ₴" onPress={()=>eat('normal')}/><Mini title="Хорошая еда" value="650 ₴" onPress={()=>eat('good')}/></View>
+  <Section title="Ускорить жизнь" right="остановится на событии"/>
+  <View style={styles.miniRow}><Mini title="День" value="1 день" onPress={()=>ff('day')}/><Mini title="Неделя" value="до 7 дней" onPress={()=>ff('week')}/><Mini title="До события" value="до 30 дней" onPress={()=>ff('event')}/></View>
+  <Section title="Что важно сейчас"/>
+  <Status label="Телефон" value={phone?`${phone.brand} ${phone.model} · ${Math.round(game.phoneCondition)}%`:'Телефона нет'} warn={!phone||game.phoneCondition<35}/>
+  <Status label="Жильё" value={housing.name}/>
+  <Status label="Дорога на работу" value={role?`${tr.type==='car'?'На машине':'Общественный транспорт'} · ${tr.minutes} мин`:'Нет работы'}/>
+  {debt&&<Status label="Ближайший долг" value={`${debt.title}: ${money(debt.balance)} ₴`} warn/>}
+ </ScrollView>;
 }
 
-function formatDate(date) {
-  const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
-  return `${date.day} ${months[date.month - 1]} ${date.year}`;
+function Career({game,company,role,join,quit,gigOK,doGig}){
+ return <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  <Text style={styles.kicker}>КАРЬЕРА</Text><Text style={styles.hero}>Работа и подработки</Text><Text style={styles.sub}>Выбери компанию и расти внутри неё.</Text>
+  {company&&role&&<><Section title="Текущая компания"/><View style={styles.bigCard}><Text style={styles.caption}>{company.sector.toUpperCase()}</Text><Text style={styles.cardTitle}>{company.name}</Text><Text style={styles.sub}>{role.name}</Text><Text style={styles.green}>{money(role.salary)} ₴ / месяц</Text><View style={styles.divider}/><Row l1="В компании" v1={`${game.career.companyMonths} мес.`} l2="Прогулы" v2={`${game.career.attendance.absences}`}/><Pressable onPress={quit}><Text style={styles.dangerText}>Уволиться</Text></Pressable></View></>}
+  <Section title="Компании"/>
+  {COMPANIES.map(c=><View key={c.id} style={[styles.company,game.career.companyId===c.id&&styles.active]}>
+   <Text style={styles.caption}>{c.sector.toUpperCase()}</Text><Text style={styles.cardTitle}>{c.name}</Text>
+   {c.roles.map((r,i)=>{const ok=roleOK(c,r),cur=game.career.companyId===c.id&&game.career.roleId===r.id;return <Pressable key={r.id} style={[styles.role,cur&&styles.roleActive]} onPress={()=>join(c,r)}>
+    <View style={styles.num}><Text style={styles.numText}>{i+1}</Text></View><View style={{flex:1}}><Text style={styles.roleTitle}>{r.name}</Text><Text style={styles.small}>{money(r.salary)} ₴ · {r.hours} ч · Пн–Пт</Text>{!ok&&!cur&&<Text style={styles.req}>Инт {r.req.i} · Хар {r.req.c} · Навык {r.req.s} · Реп {r.req.r}{r.min?` · стаж ${r.min} мес.`:''}</Text>}</View><Text style={[styles.state,{color:cur?C.green:ok?C.accent:C.muted}]}>{cur?'ТЕКУЩАЯ':ok?'ДОСТУПНО':'ЗАКРЫТО'}</Text>
+   </Pressable>;})}
+  </View>)}
+  <Section title="Подработки" right="оплата день в день"/>
+  {SIDE_GIGS.map(x=>{const ok=gigOK(x),done=game.sideGigDoneToday[x.id];return <Pressable key={x.id} disabled={!ok||done} onPress={()=>doGig(x)} style={[styles.gig,(!ok||done)&&{opacity:.45}]}><View style={{flex:1}}><Text style={styles.roleTitle}>{x.name}</Text><Text style={styles.small}>{x.hours} ч · −{x.energy} энергии</Text>{!ok&&<Text style={styles.redSmall}>Не выполнены требования</Text>}</View><Text style={styles.green}>{done?'Готово':`${money(x.pay)} ₴`}</Text></Pressable>;})}
+ </ScrollView>;
 }
 
-function daysInMonth(month, year) {
-  return new Date(year, month, 0).getDate();
+function Finance({game,role,borrow,repay,invest,capital}){
+ const debts=game.debts.filter(x=>x.status==='active');
+ return <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  <Text style={styles.kicker}>ФИНАНСЫ</Text><Text style={styles.hero}>Деньги</Text><Text style={styles.sub}>Помощь близких, кредиты, МФО и инвестиции.</Text>
+  <View style={styles.bigCard}><Text style={styles.caption}>Чистый капитал</Text><Text style={styles.bigMoney}>{money(capital)} ₴</Text><View style={styles.divider}/><Row l1="Долги" v1={`${money(debts.reduce((s,d)=>s+d.balance,0))} ₴`} l2="Зарплата" v2={role?`${money(role.salary)} ₴`:'Нет'}/></View>
+  <Section title="Занять деньги"/><Offer title="Попросить у мамы" sub="Без процентов, но отношения имеют значение" opts={[3000,5000,10000]} pick={a=>borrow('mother',a)}/><Offer title="Банковский кредит" sub="Меньше ставка, строгая оценка" opts={[10000,30000,70000]} pick={a=>borrow('bank',a)}/><Offer title="Микрозайм" sub="Легче получить, дорого при просрочке" opts={[3000,7000,15000]} pick={a=>borrow('micro',a)} danger/>
+  <Section title="Активные долги" right={`${debts.length}`}/>{!debts.length&&<Empty text="Долгов нет."/>}
+  {debts.map(d=><View key={d.uid} style={styles.product}><Text style={styles.caption}>{d.kind==='micro'?'МФО':d.kind==='bank'?'БАНК':'ЛИЧНЫЙ ДОЛГ'}</Text><Text style={styles.cardTitle}>{d.title}</Text><Text style={styles.price}>{money(d.balance)} ₴</Text><Text style={styles.small}>{d.lateMarked?'ПРОСРОЧЕН':'До срока '+Math.max(0,d.dueSerial-serial(game.date))+' дней'}</Text><View style={styles.buttons}><Btn text="1 000 ₴" onPress={()=>repay(d,1000)}/><Btn text="5 000 ₴" onPress={()=>repay(d,5000)}/><Btn text="Погасить" onPress={()=>repay(d,d.balance)}/></View></View>)}
+  <Section title="Инвестиции"/><View style={styles.bigCard}><Text style={styles.caption}>ПОРТФЕЛЬ</Text><Text style={styles.cardTitle}>{money(game.investmentPortfolio.marketValue)} ₴</Text><Text style={[styles.green,{color:game.investmentPortfolio.lastMonthReturn>=0?C.green:C.red}]}>{game.investmentPortfolio.lastMonthReturn>=0?'+':''}{money(game.investmentPortfolio.lastMonthReturn)} ₴ за прошлый месяц</Text><View style={styles.buttons}>{[1000,5000,10000].map(a=><Btn key={a} text={`+${money(a)} ₴`} onPress={()=>invest(a)}/>)}</View></View>
+ </ScrollView>;
 }
 
-function nextDate(date) {
-  let { day, month, year } = date;
-  day++;
-  if (day > daysInMonth(month, year)) {
-    day = 1;
-    month++;
-    if (month > 12) {
-      month = 1;
-      year++;
-    }
-  }
-  return { day, month, year };
+function Market({game,buyPhone,buyCar,chooseHousing,buyBiz,marketTab,setMarketTab}){
+ return <View style={{flex:1}}><View style={styles.tabs}>{[['phones','Техника'],['cars','Авто'],['housing','Жильё'],['business','Бизнес']].map(([id,t])=><Pressable key={id} onPress={()=>setMarketTab(id)} style={[styles.tab,marketTab===id&&styles.tabActive]}><Text style={[styles.tabText,marketTab===id&&{color:C.text}]}>{t}</Text></Pressable>)}</View>
+  <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+   {marketTab==='phones'&&<><Text style={styles.kicker}>ТЕХНИКА</Text><Text style={styles.hero}>Телефоны</Text><Text style={styles.sub}>Старый телефон ограничивает цифровые вакансии и подработки.</Text>{PHONES.map(p=><Prod key={p.id} title={`${p.brand} ${p.model}`} price={p.price} current={game.phoneId===p.id} foot={`Производительность ${p.performance} · престиж ${p.prestige}`} onPress={()=>buyPhone(p)}/>)}</>}
+   {marketTab==='cars'&&<><Text style={styles.kicker}>АВТО</Text><Text style={styles.hero}>Автосалоны</Text><Text style={styles.sub}>Машина сокращает дорогу и открывает подработки, но требует содержания.</Text>{CARS.map(c=><Prod key={c.id} title={`${c.brand} ${c.model}`} price={c.price} foot={`Надёжность ${c.reliability} · комфорт ${c.comfort} · ≈${money(c.monthly)} ₴/мес.`} onPress={()=>buyCar(c)}/>)}</>}
+   {marketTab==='housing'&&<><Text style={styles.kicker}>ЖИЛЬЁ</Text><Text style={styles.hero}>Где жить</Text>{HOUSING.filter(h=>h.id!=='homeless').map(h=><Prod key={h.id} title={h.name} price={h.type==='buy'?h.price:h.monthly} current={game.housingId===h.id} foot={`Комфорт ${h.comfort}${h.type==='rent'?' · аренда в месяц':''}`} onPress={()=>chooseHousing(h)}/>)}</>}
+   {marketTab==='business'&&<><Text style={styles.kicker}>БИЗНЕС</Text><Text style={styles.hero}>Свой бизнес</Text>{BUSINESSES.map(b=><Prod key={b.id} title={b.name} price={b.price} foot={`Средняя выручка до расходов ≈ ${money(b.daily)} ₴/день`} onPress={()=>buyBiz(b)}/>)}</>}
+  </ScrollView>
+ </View>;
 }
 
-function dateSerial(date) {
-  return Math.floor(Date.UTC(date.year, date.month - 1, date.day) / 86400000);
+function Assets({game,phone,housing,capital,sellPhone,sellCar,sellProp,sellBiz,patch,reset}){
+ return <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+  <Text style={styles.kicker}>АКТИВЫ</Text><Text style={styles.hero}>{money(capital)} ₴</Text><Text style={styles.sub}>Имущество можно продать даже если оно единственное.</Text>
+  <Section title="Телефон"/>{phone?<View style={styles.bigCard}><Text style={styles.caption}>{phone.brand}</Text><Text style={styles.cardTitle}>{phone.model}</Text><Text style={styles.small}>Состояние {Math.round(game.phoneCondition)}% · эффективность {Math.round(phonePerf(game))}</Text><Pressable onPress={sellPhone}><Text style={styles.dangerText}>Продать телефон</Text></Pressable></View>:<Empty text="Телефона нет. Часть функций недоступна."/>}
+  <Section title="Автомобили"/>{!game.cars.length&&<Empty text="Автомобилей нет."/>}{game.cars.map(o=>{const b=carById(o.catalogId);return <View key={o.uid} style={[styles.product,game.activeCarId===o.uid&&styles.active]}><Text style={styles.caption}>{b.brand}</Text><Text style={styles.cardTitle}>{b.model}</Text><Text style={styles.small}>Состояние {Math.round(o.condition)}% · {money(o.mileage||0)} км</Text><View style={styles.buttons}><Btn text={game.activeCarId===o.uid?'Используется':'Использовать'} onPress={()=>patch({activeCarId:o.uid})}/><Btn text="Продать" danger onPress={()=>sellCar(o)}/></View></View>;})}
+  <Section title="Жильё"/><Status label="Сейчас живёшь" value={housing.name}/>{game.properties.map(o=><View key={o.uid} style={styles.product}><Text style={styles.cardTitle}>{housingById(o.catalogId).name}</Text><Text style={styles.small}>Состояние {Math.round(o.condition||100)}%</Text><Pressable onPress={()=>sellProp(o)}><Text style={styles.dangerText}>Продать недвижимость</Text></Pressable></View>)}
+  <Section title="Бизнесы"/>{!game.businesses.length&&<Empty text="Бизнесов нет."/>}{game.businesses.map(o=>{const b=BUSINESSES.find(x=>x.id===o.catalogId);return <View key={o.uid} style={styles.product}><Text style={styles.cardTitle}>{b.name}</Text><Text style={[styles.green,{color:(o.lastMonthProfit||0)>=0?C.green:C.red}]}>{(o.lastMonthProfit||0)>=0?'+':''}{money(o.lastMonthProfit||0)} ₴</Text><Text style={styles.small}>Состояние {Math.round(o.condition||100)}%</Text><Pressable onPress={()=>sellBiz(o)}><Text style={styles.dangerText}>Продать бизнес</Text></Pressable></View>;})}
+  <Section title="История жизни"/>{[...game.memories].reverse().slice(0,15).map((m,i)=><View key={i} style={styles.memory}><Text style={styles.caption}>{m.date} · {m.age} лет</Text><Text style={styles.memoryText}>{m.text}</Text></View>)}
+  <Pressable style={{padding:20,alignItems:'center'}} onPress={reset}><Text style={styles.dangerText}>Начать новую жизнь</Text></Pressable>
+ </ScrollView>;
 }
 
-function addDays(date, days) {
-  const d = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
-  return {
-    day: d.getUTCDate(),
-    month: d.getUTCMonth() + 1,
-    year: d.getUTCFullYear(),
-  };
-}
-
-function daysUntil(from, to) {
-  return dateSerial(to) - dateSerial(from);
-}
-
-function debtOutstanding(debt) {
-  return Math.max(0, Math.round((debt.principalRemaining || 0) + (debt.accruedInterest || 0) + (debt.penalties || 0)));
-}
-
-function creditLabel(game) {
-  const score = game.hidden.creditTrust;
-  if (game.borrowingHistory.defaults > 0 || score < 30) return 'Плохая';
-  if (score < 48) return 'Слабая';
-  if (score < 64) return 'Нормальная';
-  if (score < 78) return 'Хорошая';
-  return 'Отличная';
-}
-
-function activeDebtTotal(game) {
-  return game.debts
-    .filter(d => d.status === 'active')
-    .reduce((sum, d) => sum + debtOutstanding(d), 0);
-}
-
-function bankMonthlyLoad(game) {
-  return game.debts
-    .filter(d => d.status === 'active' && d.type === 'bank')
-    .reduce((sum, d) => sum + (d.monthlyPayment || 0), 0);
-}
-
-function estimateStableIncome(game, currentJob) {
-  const salary = currentJob?.salary || 0;
-  const business = game.businesses.reduce((sum, b) => sum + Math.max(0, b.lastMonthProfit || 0), 0);
-  return salary + business;
-}
-
-function calculateBankOffer(game, currentJob, netWorth) {
-  const income = estimateStableIncome(game, currentJob);
-  const trust = game.hidden.creditTrust;
-  const existingLoad = bankMonthlyLoad(game);
-  const debtRatio = income > 0 ? existingLoad / income : 1;
-
-  if (income < 12000 && netWorth < 250000) {
-    return { approved: false, limit: 0, apr: 0, reason: 'Нет подтверждённого стабильного дохода.' };
-  }
-
-  if (trust < 25 || game.borrowingHistory.defaults >= 2) {
-    return { approved: false, limit: 0, apr: 0, reason: 'Банк не готов кредитовать из-за плохой платёжной истории.' };
-  }
-
-  if (debtRatio > 0.48) {
-    return { approved: false, limit: 0, apr: 0, reason: 'Слишком большая текущая долговая нагрузка.' };
-  }
-
-  const multiplier = 1.2 + trust / 22;
-  const assetBoost = Math.min(netWorth * 0.08, 250000);
-  const grossLimit = income * multiplier + assetBoost;
-  const existingDebt = game.debts
-    .filter(d => d.status === 'active' && d.type === 'bank')
-    .reduce((sum, d) => sum + debtOutstanding(d), 0);
-
-  const limit = Math.max(0, Math.min(1500000, Math.round(grossLimit - existingDebt)));
-  const apr = Math.max(15.5, Math.min(41, Number((37 - trust * 0.22).toFixed(1))));
-
-  return {
-    approved: limit >= 5000,
-    limit,
-    apr,
-    reason: limit >= 5000 ? null : 'Доступный лимит сейчас слишком мал.',
-  };
-}
-
-function calculateMicroOffer(game) {
-  const trust = game.hidden.creditTrust;
-  const existing = game.debts.some(d => d.status === 'active' && d.type === 'micro');
-  if (existing) {
-    return { approved: false, limit: 0, dailyRate: 0, reason: 'Сначала нужно закрыть текущий микрозайм.' };
-  }
-
-  const limit = Math.max(3000, Math.min(30000, Math.round(3500 + trust * 220)));
-  const dailyRate = Math.max(0.0035, Math.min(0.009, 0.0092 - trust * 0.000055));
-
-  return { approved: true, limit, dailyRate, reason: null };
-}
-
-function annuityPayment(principal, apr, months) {
-  const r = apr / 100 / 12;
-  if (r <= 0) return principal / months;
-  return principal * r / (1 - Math.pow(1 + r, -months));
-}
-
-function getPhone(id) {
-  if (!id) return null;
-  return PHONES.find(x => x.id === id) || null;
-}
-
-function getHousing(id) {
-  return HOUSING.find(x => x.id === id) || HOUSING[0];
-}
-
-function getJob(id) {
-  return JOBS.find(x => x.id === id) || null;
-}
-
-function Game() {
-  const [game, setGame] = useState(START);
-  const [screen, setScreen] = useState('home');
-  const [sleepModalVisible, setSleepModalVisible] = useState(false);
-  const [marketTab, setMarketTab] = useState('phones');
-  const [loaded, setLoaded] = useState(false);
-  const [event, setEvent] = useState(null);
-  const saveTimer = useRef(null);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(SAVE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const restored = deepMerge(START, parsed);
-          setGame(restored);
-          if (restored.pendingEventId && EVENTS[restored.pendingEventId]) {
-            setEvent(EVENTS[restored.pendingEventId]);
-          }
-        }
-      } catch (e) {
-        console.log('LOAD ERROR', e);
-      } finally {
-        setLoaded(true);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!loaded) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      try {
-        await AsyncStorage.setItem(SAVE_KEY, JSON.stringify(game));
-      } catch (e) {
-        console.log('SAVE ERROR', e);
-      }
-    }, 250);
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-    };
-  }, [game, loaded]);
-
-  const currentJob = useMemo(() => getJob(game.jobId), [game.jobId]);
-  const currentPhone = useMemo(() => getPhone(game.phoneId), [game.phoneId]);
-  const currentHousing = useMemo(() => getHousing(game.housingId), [game.housingId]);
-
-  const netWorth = useMemo(() => {
-    const cars = game.cars.reduce((s, c) => {
-      const base = CARS.find(x => x.id === c.catalogId);
-      return s + (base ? base.price * (c.condition / 100) * 0.75 : 0);
-    }, 0);
-    const props = game.properties.reduce((s, p) => {
-      const base = HOUSING.find(x => x.id === p.catalogId);
-      return s + (base ? base.price * ((p.condition ?? 100) / 100) * 0.85 : 0);
-    }, 0);
-    const biz = game.businesses.reduce((s, b) => {
-      const base = BUSINESS_CATALOG.find(x => x.id === b.catalogId);
-      return s + (base ? base.price * ((b.condition ?? 100) / 100) * 0.72 : 0);
-    }, 0);
-    const debts = game.debts.reduce((sum, debt) => sum + debtOutstanding(debt), 0);
-    const phoneValue = currentPhone ? currentPhone.price * game.phoneCondition / 100 * 0.55 : 0;
-    return Math.round(game.cash + game.bank + cars + props + biz + investmentTotalValue(game) + phoneValue - debts);
-  }, [game, currentPhone]);
-
-  const patch = (updater) => {
-    setGame(prev => typeof updater === 'function' ? updater(prev) : ({ ...prev, ...updater }));
-  };
-
-  const spend = (amount, category = 'purchases') => {
-    if (game.cash < amount) return false;
-    patch(g => ({
-      ...g,
-      cash: g.cash - amount,
-      monthly: { ...g.monthly, [category]: (g.monthly[category] || 0) + amount },
-      stats: { ...g.stats, totalSpent: g.stats.totalSpent + amount },
-    }));
-    return true;
-  };
-
-  const advanceMinutes = (g, mins) => {
-    let total = g.timeMinutes + mins;
-    let result = { ...g, timeMinutes: total };
-    while (result.timeMinutes >= 1440) {
-      result.timeMinutes -= 1440;
-      result = processNewDay(result);
-    }
-    return result;
-  };
-
-  const processDailyDebts = (g) => {
-    let cash = g.cash;
-    let stress = g.stress;
-    let mood = g.mood;
-    let creditTrust = g.hidden.creditTrust;
-    let reliability = g.hidden.reliability;
-    let socialTrust = g.hidden.socialTrust;
-    let familyBond = g.hidden.familyBond;
-    let history = { ...g.borrowingHistory };
-    let relatives = { ...g.relatives };
-    const todaySerial = dateSerial(g.date);
-
-    const debts = g.debts.map(debt => {
-      if (debt.status !== 'active') return debt;
-
-      let d = { ...debt };
-      const principal = Math.max(0, d.principalRemaining || 0);
-
-      if (d.type === 'bank') {
-        d.accruedInterest = (d.accruedInterest || 0) + principal * ((d.apr || 0) / 100 / 365);
-      }
-
-      if (d.type === 'micro') {
-        d.accruedInterest = (d.accruedInterest || 0) + principal * (d.dailyRate || 0);
-
-        const lateDays = Math.max(0, todaySerial - dateSerial(d.dueDate));
-        if (lateDays > 0) {
-          d.penalties = (d.penalties || 0) + principal * (d.overdueDailyPenalty || 0.004);
-          creditTrust = clamp(creditTrust - 0.35);
-          stress = clamp(stress + 0.35);
-
-          if (lateDays % 7 === 1) {
-            history.latePayments += 1;
-            d.lateMarks = (d.lateMarks || 0) + 1;
-          }
-        }
-
-        if (todaySerial >= dateSerial(d.dueDate) && cash >= debtOutstanding(d)) {
-          const total = debtOutstanding(d);
-          cash -= total;
-          history.microLoansClosed += 1;
-          history.totalInterestPaid += Math.max(0, total - (d.originalPrincipal || 0));
-          creditTrust = clamp(creditTrust + 2);
-          d = { ...d, principalRemaining: 0, accruedInterest: 0, penalties: 0, status: 'closed', closedAt: g.date };
-        }
-      }
-
-      if (d.type === 'social') {
-        const lateDays = Math.max(0, todaySerial - dateSerial(d.dueDate));
-        if (lateDays > 0 && lateDays % 7 === 1) {
-          reliability = clamp(reliability - 3);
-          socialTrust = clamp(socialTrust - 2);
-          stress = clamp(stress + 1.5);
-          history.latePayments += 1;
-
-          if (d.lenderKey === 'mother') {
-            familyBond = clamp(familyBond - 3);
-            relatives.mother = {
-              ...relatives.mother,
-              relationship: clamp(relatives.mother.relationship - 4),
-            };
-          }
-          if (d.lenderKind === 'coworker') {
-            creditTrust = clamp(creditTrust - 0.5);
-          }
-
-          d.lateMarks = (d.lateMarks || 0) + 1;
-        }
-      }
-
-      return d;
-    });
-
-    return {
-      ...g,
-      cash,
-      stress,
-      mood,
-      debts,
-      borrowingHistory: history,
-      relatives,
-      hidden: {
-        ...g.hidden,
-        creditTrust,
-        reliability,
-        socialTrust,
-        familyBond,
-      },
-    };
-  };
-
-
-  const processDailyInvestments = (g) => {
-    const portfolio = g.investmentPortfolio || START.investmentPortfolio;
-    const today = dateSerial(g.date);
-    let cash = g.cash;
-    let interestReceived = portfolio.interestReceived || 0;
-    let totalEarnedAdd = 0;
-    let memories = [...g.memories];
-
-    const mature = (item, kind) => {
-      if (item.status !== 'active' || today < item.maturitySerial) return item;
-      const interest = Math.round(
-        item.principal * (item.annualRate / 100) * (item.termDays / 365)
-      );
-      const payout = item.principal + interest;
-      cash += payout;
-      interestReceived += interest;
-      totalEarnedAdd += interest;
-      memories.push({
-        date: formatDate(g.date),
-        age: g.age,
-        text: `${kind} погашен: получено ${money(payout)} ₴, из них ${money(interest)} ₴ дохода`,
-      });
-      return {
-        ...item,
-        status: 'closed',
-        closedAt: g.date,
-        payout,
-        interest,
-      };
-    };
-
-    const deposits = (portfolio.deposits || []).map(x => mature(x, 'Депозит'));
-    const bonds = (portfolio.bonds || []).map(x => mature(x, 'ОВГЗ'));
-
-    return {
-      ...g,
-      cash,
-      investmentPortfolio: {
-        ...portfolio,
-        deposits,
-        bonds,
-        interestReceived,
-      },
-      stats: {
-        ...g.stats,
-        totalEarned: g.stats.totalEarned + totalEarnedAdd,
-      },
-      memories: memories.slice(-80),
-    };
-  };
-
-  const processNewDay = (g) => {
-    const oldDate = g.date;
-    const nd = nextDate(oldDate);
-    let age = g.age;
-    if (nd.day === g.birthday.day && nd.month === g.birthday.month) age++;
-
-    const housing = getHousing(g.housingId);
-    const car = g.activeCarId ? g.cars.find(x => x.uid === g.activeCarId) : null;
-    const carBase = car ? CARS.find(x => x.id === car.catalogId) : null;
-
-    let healthDelta = 0;
-    let longHealthDelta = 0;
-
-    if (g.fatigue > 80) { healthDelta -= 0.5; longHealthDelta -= 0.18; }
-    if (g.stress > 80) { healthDelta -= 0.35; longHealthDelta -= 0.15; }
-    if (g.satiety < 20) { healthDelta -= 0.6; longHealthDelta -= 0.15; }
-    if (g.fitness > 60) longHealthDelta += 0.06;
-    longHealthDelta += housing.healthBonus * 0.01;
-
-    let ng = {
-      ...g,
-      date: nd,
-      age,
-      workedToday: false,
-      familyMealsToday: 0,
-      sideGigDoneToday: {},
-      socialDoneToday: {},
-      stats: { ...g.stats, daysLived: g.stats.daysLived + 1 },
-      health: clamp(g.health + healthDelta),
-      hidden: {
-        ...g.hidden,
-        longTermHealth: clamp(g.hidden.longTermHealth + longHealthDelta),
-        lifeStress: clamp(g.hidden.lifeStress + Math.max(0, g.stress - 55) * 0.004),
-        burnout: clamp(g.hidden.burnout + (g.stress > 70 ? 0.15 : -0.05)),
-      },
-      phoneCondition: g.phoneId ? clamp(g.phoneCondition - 0.012) : 0,
-    };
-
-    if (car) {
-      ng.cars = g.cars.map(x => x.uid === car.uid
-        ? { ...x, mileage: x.mileage + 18, condition: clamp(x.condition - (100 - (carBase?.reliability || 50)) * 0.002, 20, 100) }
-        : x
-      );
-    }
-
-    ng.properties = ng.properties.map(p => ({
-      ...p,
-      condition: clamp((p.condition ?? 100) - 0.004, 35, 100),
-    }));
-
-    for (const key of Object.keys(ng.relatives)) {
-      const r = ng.relatives[key];
-      if (!r.alive) continue;
-      const birthdayChance = 1 / 365;
-      const aged = Math.random() < birthdayChance ? { ...r, age: r.age + 1 } : r;
-      ng.relatives = { ...ng.relatives, [key]: aged };
-    }
-
-    if (nd.day === 1) {
-      ng = processMonth(ng);
-    }
-
-    ng = processDailyDebts(ng);
-    ng = processDailyInvestments(ng);
-    ng = maybeDeath(ng);
-    if (ng.alive) ng = maybeGenerateEvent(ng);
-    return ng;
-  };
-
-  const processMonth = (g) => {
-    const job = getJob(g.jobId);
-    const housing = getHousing(g.housingId);
-
-    let income = 0;
-    let expenses = 0;
-
-    if (job && g.workDaysMonth > 0) {
-      const prevMonth = g.date.month === 1 ? 12 : g.date.month - 1;
-      const prevYear = g.date.month === 1 ? g.date.year - 1 : g.date.year;
-      const possible = Math.max(1, Math.min(22, daysInMonth(prevMonth, prevYear)));
-      income += Math.round(job.salary * Math.min(1, g.workDaysMonth / possible));
-    }
-
-    let businessIncome = 0;
-    const businesses = g.businesses.map(b => {
-      const base = BUSINESS_CATALOG.find(x => x.id === b.catalogId);
-      if (!base) return b;
-      const gross = base.baseDaily * 30 * (0.85 + Math.random() * 0.3);
-      const net = Math.round(gross * (1 - base.expenses));
-      businessIncome += net;
-      const condition = clamp((b.condition ?? 100) + (net >= 0 ? 0.15 : -0.5), 30, 100);
-      return { ...b, lastMonthProfit: net, condition };
-    });
-    income += businessIncome;
-
-    const oldPortfolio = g.investmentPortfolio || START.investmentPortfolio;
-    const prices = { ...(oldPortfolio.prices || {}) };
-    const lastMarketMove = {};
-    const quarterEnd = [3, 6, 9, 12].includes(g.date.month);
-    let investmentCashIncome = 0;
-
-    INVESTMENT_ASSETS.forEach(asset => {
-      const oldPrice = prices[asset.id] || asset.price;
-      const rawMove = asset.drift + ((Math.random() * 2 - 1) * asset.volatility);
-      const move = Math.max(-0.35, Math.min(0.35, rawMove));
-      const newPrice = Math.max(1, Math.round(oldPrice * (1 + move)));
-      prices[asset.id] = newPrice;
-      lastMarketMove[asset.id] = move;
-
-      if (quarterEnd && asset.dividendYield > 0) {
-        const holding = oldPortfolio.holdings?.[asset.id];
-        if (holding?.units > 0) {
-          const dividend = Math.round(
-            holding.units * newPrice * (asset.dividendYield / 4)
-          );
-          investmentCashIncome += dividend;
-        }
-      }
-    });
-
-    const investmentPortfolio = {
-      ...oldPortfolio,
-      prices,
-      lastMarketMove,
-      dividendsReceived: (oldPortfolio.dividendsReceived || 0) + investmentCashIncome,
-    };
-
-    income += investmentCashIncome;
-
-    const livingWithParents = g.housingId === 'parents' && g.relatives.mother.alive;
-    const housingCost = livingWithParents
-      ? (job ? Math.min(housing.monthly, 2500) : 0)
-      : housing.monthly;
-    expenses += housingCost;
-
-    const phone = getPhone(g.phoneId);
-    expenses += phone ? phone.monthly : 0;
-
-    for (const owned of g.cars) {
-      const base = CARS.find(x => x.id === owned.catalogId);
-      if (base) expenses += base.monthly;
-    }
-
-    const food = livingWithParents
-      ? (job ? 1500 : 0)
-      : 4500;
-    const familySupport = livingWithParents
-      ? Math.max(0, 6500 - food - housingCost)
-      : 0;
-    expenses += food;
-
-    let cashAfter = g.cash + income - expenses;
-    let debtPayments = 0;
-    let interestPaid = 0;
-    let creditTrust = g.hidden.creditTrust;
-    let stress = g.stress;
-    let history = { ...g.borrowingHistory };
-
-    const debts = g.debts.map(debt => {
-      if (debt.status !== 'active' || debt.type !== 'bank') return debt;
-
-      let d = { ...debt };
-      const due = Math.min(debtOutstanding(d), d.monthlyPayment || debtOutstanding(d));
-      const available = Math.max(0, cashAfter);
-      const paid = Math.min(available, due);
-
-      if (paid > 0) {
-        cashAfter -= paid;
-        debtPayments += paid;
-
-        let rest = paid;
-        const penaltyPart = Math.min(rest, d.penalties || 0);
-        d.penalties = Math.max(0, (d.penalties || 0) - penaltyPart);
-        rest -= penaltyPart;
-
-        const interestPart = Math.min(rest, d.accruedInterest || 0);
-        d.accruedInterest = Math.max(0, (d.accruedInterest || 0) - interestPart);
-        rest -= interestPart;
-        interestPaid += interestPart;
-
-        d.principalRemaining = Math.max(0, (d.principalRemaining || 0) - rest);
-      }
-
-      if (paid + 1 < due) {
-        const missed = due - paid;
-        d.penalties = (d.penalties || 0) + missed * 0.03;
-        d.lateMarks = (d.lateMarks || 0) + 1;
-        history.latePayments += 1;
-        creditTrust = clamp(creditTrust - 5);
-        stress = clamp(stress + 5);
-      } else {
-        creditTrust = clamp(creditTrust + 0.8);
-      }
-
-      if (debtOutstanding(d) <= 1) {
-        history.bankLoansClosed += 1;
-        d = {
-          ...d,
-          principalRemaining: 0,
-          accruedInterest: 0,
-          penalties: 0,
-          status: 'closed',
-          closedAt: g.date,
-        };
-      }
-
-      return d;
-    });
-
-    history.totalInterestPaid += interestPaid;
-
-    return {
-      ...g,
-      cash: cashAfter,
-      debts,
-      borrowingHistory: history,
-      stress,
-      hidden: {
-        ...g.hidden,
-        creditTrust,
-        financialDiscipline: clamp(
-          g.hidden.financialDiscipline +
-            (history.latePayments > g.borrowingHistory.latePayments ? -3 : (debtPayments > 0 ? 0.5 : 0))
-        ),
-      },
-      workDaysMonth: 0,
-      businesses,
-      investmentPortfolio,
-      careerMonths: job ? g.careerMonths + 1 : g.careerMonths,
-      yearsExperience: job ? Number(((g.careerMonths + 1) / 12).toFixed(1)) : g.yearsExperience,
-      monthly: {
-        salary: job ? income - businessIncome - investmentCashIncome : 0,
-        business: businessIncome,
-        investments: investmentCashIncome,
-        housing: housingCost,
-        food,
-        familySupport,
-        transport: g.cars.reduce((s, owned) => {
-          const base = CARS.find(x => x.id === owned.catalogId);
-          return s + (base?.monthly || 0);
-        }, 0),
-        healthcare: 0,
-        purchases: 0,
-        debtPayments,
-        interest: interestPaid,
-        sideGigs: g.monthly.sideGigs || 0,
-      },
-      stats: {
-        ...g.stats,
-        totalEarned: g.stats.totalEarned + Math.max(0, income),
-        totalSpent: g.stats.totalSpent + expenses + debtPayments,
-        familySupportValue: g.stats.familySupportValue + familySupport,
-      },
-    };
-  };
-
-  const maybeDeath = (g) => {
-    if (!g.alive) return g;
-    const age = g.age;
-    if (age < 45) return g;
-
-    const healthQuality = (g.health * 0.35 + g.hidden.longTermHealth * 0.35 + g.fitness * 0.15 + (100 - g.hidden.lifeStress) * 0.15);
-    let annualRisk = 0;
-    if (age >= 45) annualRisk += (age - 44) * 0.0002;
-    if (age >= 65) annualRisk += (age - 64) * 0.0012;
-    if (age >= 80) annualRisk += (age - 79) * 0.006;
-    annualRisk *= (1.7 - healthQuality / 100);
-    if (g.health < 30) annualRisk *= 2.5;
-    if (g.hidden.longTermHealth < 35) annualRisk *= 2.0;
-
-    const dailyRisk = Math.max(0, annualRisk / 365);
-    if (Math.random() < dailyRisk) {
-      const cause = g.health < 30 || g.hidden.longTermHealth < 40
-        ? 'осложнения, связанные с состоянием здоровья'
-        : 'естественные причины';
-      return {
-        ...g,
-        alive: false,
-        causeOfDeath: cause,
-        endedAt: formatDate(g.date),
-      };
-    }
-    return g;
-  };
-
-  const maybeGenerateEvent = (g) => {
-    if (g.pendingEventId) return g;
-    if (g.stats.daysLived - g.lastEventDay < 5) return g;
-
-    const chance = 0.06;
-    if (Math.random() > chance) return g;
-
-    const pool = ['family_dinner', 'friend_help', 'old_friend_message'];
-
-    if (g.hidden.socialTrust > 45 || g.charisma > 15) {
-      pool.push('social_invitation');
-    }
-
-    if (g.jobId) {
-      pool.push('coworker_funeral');
-      if (g.hidden.careerTrust > 40 && g.careerMonths > 4) pool.push('promotion_chance');
-    }
-
-    if (g.health < 70 || g.fatigue > 65 || g.stress > 65) {
-      pool.push('health_warning', 'health_warning');
-    }
-
-    const id = pool[Math.floor(Math.random() * pool.length)];
-    return {
-      ...g,
-      pendingEventId: id,
-      lastEventDay: g.stats.daysLived,
-      stats: { ...g.stats, eventsSeen: g.stats.eventsSeen + 1 },
-    };
-  };
-
-  useEffect(() => {
-    if (game.pendingEventId && EVENTS[game.pendingEventId]) {
-      setEvent(EVENTS[game.pendingEventId]);
-    } else {
-      setEvent(null);
-    }
-  }, [game.pendingEventId]);
-
-  const doWork = () => {
-    const job = currentJob;
-    if (!job) return Alert.alert('Работа', 'Сначала устройся на работу.');
-    if (game.workedToday) return Alert.alert('Работа', 'Сегодня смена уже отработана.');
-    if (game.energy < job.energy || game.fatigue > 90) return Alert.alert('Слишком устал', 'Сейчас полноценная смена может сильно ухудшить состояние.');
-
-    patch(g => {
-      let skillGain = 0.5;
-      if (g.fatigue > 70 || g.stress > 75) skillGain *= 0.6;
-      return advanceMinutes({
-        ...g,
-        energy: clamp(g.energy - job.energy),
-        fatigue: clamp(g.fatigue + job.fatigue),
-        stress: clamp(g.stress + job.stress),
-        satiety: clamp(g.satiety - 18),
-        mood: clamp(g.mood - (job.stress > 15 ? 4 : 1)),
-        professionalSkill: clamp(g.professionalSkill + skillGain),
-        charisma: clamp(
-          g.charisma +
-            (['seller', 'operator', 'sales_manager', 'senior_manager', 'director'].includes(job.id)
-              ? (g.fatigue > 70 ? 0.04 : 0.08)
-              : 0.015)
-        ),
-        reputation: clamp(g.reputation + 0.15),
-        workedToday: true,
-        workDaysMonth: g.workDaysMonth + 1,
-        hidden: {
-          ...g.hidden,
-          careerTrust: clamp(g.hidden.careerTrust + (g.hidden.reliability > 55 ? 0.2 : 0.08)),
-          burnout: clamp(g.hidden.burnout + job.stress * 0.025),
-        },
-      }, job.hours * 60);
-    });
-  };
-
-  const eat = (kind) => {
-    const opts = {
-      cheap: { cost: 120, satiety: 30, mood: 0, health: -0.1, mins: 25 },
-      normal: { cost: 280, satiety: 45, mood: 2, health: 0.1, mins: 40 },
-      good: { cost: 650, satiety: 55, mood: 5, health: 0.25, mins: 60 },
-    };
-    const o = opts[kind];
-    if (game.cash < o.cost) return Alert.alert('Недостаточно денег');
-    patch(g => advanceMinutes({
-      ...g,
-      cash: g.cash - o.cost,
-      satiety: clamp(g.satiety + o.satiety),
-      mood: clamp(g.mood + o.mood),
-      health: clamp(g.health + o.health),
-      monthly: { ...g.monthly, food: g.monthly.food + o.cost },
-      stats: { ...g.stats, totalSpent: g.stats.totalSpent + o.cost },
-    }, o.mins));
-  };
-
-
-  const eatAtHome = () => {
-    const mother = game.relatives.mother;
-    if (game.housingId !== 'parents' || !mother?.alive) {
-      return Alert.alert('Домашняя еда', 'Сейчас ты не живёшь с мамой.');
-    }
-
-    const relation = mother.relationship || 0;
-    const limit = relation >= 75 ? 3 : relation >= 50 ? 2 : relation >= 25 ? 1 : 0;
-
-    if (limit <= 0) {
-      return Alert.alert('Домашняя еда', 'Отношения дома слишком напряжённые. На постоянную поддержку сейчас рассчитывать не получается.');
-    }
-
-    if (game.familyMealsToday >= limit) {
-      return Alert.alert('Домашняя еда', 'Сегодня семья уже достаточно помогла с питанием.');
-    }
-
-    patch(g => advanceMinutes({
-      ...g,
-      familyMealsToday: g.familyMealsToday + 1,
-      satiety: clamp(g.satiety + 48),
-      energy: clamp(g.energy + 2),
-      mood: clamp(g.mood + 3),
-      stress: clamp(g.stress - 2),
-      relatives: {
-        ...g.relatives,
-        mother: {
-          ...g.relatives.mother,
-          relationship: clamp(g.relatives.mother.relationship + 0.12),
-        },
-      },
-      hidden: {
-        ...g.hidden,
-        familyBond: clamp(g.hidden.familyBond + 0.08),
-      },
-      stats: {
-        ...g.stats,
-        familySupportValue: g.stats.familySupportValue + 250,
-      },
-    }, 45));
-  };
-
-  const doSideGig = (gig) => {
-    if (game.sideGigDoneToday?.[gig.id]) {
-      return Alert.alert('Подработка', 'Эту подработку ты уже выполнял сегодня.');
-    }
-    if (!gig.req(game)) {
-      return Alert.alert('Подработка недоступна', gig.note);
-    }
-    if (game.energy < gig.energy || game.fatigue > 88) {
-      return Alert.alert('Слишком устал', 'Сейчас на эту подработку не хватает сил.');
-    }
-
-    const completedToday = Object.values(game.sideGigDoneToday || {}).filter(Boolean).length;
-    if (completedToday >= 2) {
-      return Alert.alert('Подработки', 'Сегодня ты уже взял две подработки. Организму нужен отдых.');
-    }
-
-    patch(g => advanceMinutes({
-      ...g,
-      cash: g.cash + gig.pay,
-      energy: clamp(g.energy - gig.energy),
-      fatigue: clamp(g.fatigue + gig.fatigue),
-      stress: clamp(g.stress + gig.stress),
-      satiety: clamp(g.satiety - gig.satiety),
-      mood: clamp(g.mood + 1),
-      sideGigDoneToday: { ...(g.sideGigDoneToday || {}), [gig.id]: true },
-      monthly: {
-        ...g.monthly,
-        sideGigs: (g.monthly.sideGigs || 0) + gig.pay,
-      },
-      stats: {
-        ...g.stats,
-        totalEarned: g.stats.totalEarned + gig.pay,
-        sideGigEarned: g.stats.sideGigEarned + gig.pay,
-      },
-      hidden: {
-        ...g.hidden,
-        reliability: clamp(g.hidden.reliability + 0.08),
-      },
-      memories: [
-        ...g.memories,
-        {
-          date: formatDate(g.date),
-          age: g.age,
-          text: `Подработал: ${gig.name} и получил ${money(gig.pay)} ₴`,
-        },
-      ].slice(-80),
-    }, gig.hours * 60));
-  };
-
-  const workout = () => {
-    if (game.energy < 22 || game.fatigue > 82) return Alert.alert('Тренировка', 'Сейчас организму нужен отдых.');
-    patch(g => advanceMinutes({
-      ...g,
-      energy: clamp(g.energy - 22),
-      fatigue: clamp(g.fatigue + 15),
-      satiety: clamp(g.satiety - 10),
-      fitness: clamp(g.fitness + 0.8),
-      health: clamp(g.health + 0.25),
-      mood: clamp(g.mood + 3),
-      stress: clamp(g.stress - 4),
-    }, 90));
-  };
-
-  const study = () => {
-    if (game.energy < 20 || game.fatigue > 85) return Alert.alert('Учёба', 'Ты слишком устал, чтобы нормально концентрироваться.');
-    patch(g => advanceMinutes({
-      ...g,
-      energy: clamp(g.energy - 18),
-      fatigue: clamp(g.fatigue + 11),
-      satiety: clamp(g.satiety - 7),
-      intelligence: clamp(g.intelligence + 0.65),
-      mood: clamp(g.mood - 1),
-      stress: clamp(g.stress + 2),
-    }, 120));
-  };
-
-
-  const doSocialActivity = (activity) => {
-    if (!activity) return;
-    if (!activity.repeatable && game.socialDoneToday?.[activity.id]) {
-      return Alert.alert('Социальная жизнь', 'Сегодня это действие уже выполнялось.');
-    }
-    if (game.cash < activity.cost) {
-      return Alert.alert('Недостаточно денег', `Нужно ${money(activity.cost)} ₴.`);
-    }
-    if (game.energy < activity.energy || game.fatigue > 88) {
-      return Alert.alert('Слишком устал', 'Сейчас общение будет скорее утомлять, чем приносить пользу.');
-    }
-
-    patch(g => {
-      let charismaGain = activity.charisma;
-      const socialCondition = (g.mood + (100 - g.stress) + g.energy) / 3;
-      if (socialCondition < 35) charismaGain *= 0.55;
-      if (socialCondition > 75) charismaGain *= 1.15;
-
-      let moodDelta = activity.mood;
-      let socialTrustDelta = 0.25;
-      let lonelinessDelta = -1.2;
-      let newConnections = 0;
-      let memories = g.memories;
-      let people = { ...g.people };
-
-      if (activity.id === 'friends_meet') {
-        socialTrustDelta = 0.8;
-        lonelinessDelta = -3;
-        people.friend_maks = {
-          ...people.friend_maks,
-          relation: clamp((people.friend_maks?.relation || 0) + 2.5),
-          trust: clamp((people.friend_maks?.trust || 0) + 1.2),
-        };
-      }
-
-      if (activity.id === 'networking') {
-        const chance = Math.min(0.65, 0.18 + g.charisma / 180 + g.reputation / 300);
-        if (Math.random() < chance) {
-          newConnections = 1;
-          socialTrustDelta += 0.8;
-          memories = [
-            ...memories,
-            { date: formatDate(g.date), age: g.age, text: 'На мероприятии завёл полезное новое знакомство' },
-          ].slice(-80);
-        }
-      }
-
-      if (activity.id === 'date') {
-        const successChance = Math.min(
-          0.82,
-          0.28 + g.charisma / 160 + g.mood / 500 - g.stress / 700
-        );
-        if (Math.random() < successChance) {
-          moodDelta += 6;
-          socialTrustDelta += 0.5;
-          lonelinessDelta -= 2;
-          people.friend_sofia = {
-            ...people.friend_sofia,
-            relation: clamp((people.friend_sofia?.relation || 0) + 4),
-            trust: clamp((people.friend_sofia?.trust || 0) + 1.5),
-          };
-          memories = [
-            ...memories,
-            { date: formatDate(g.date), age: g.age, text: 'Свидание прошло хорошо' },
-          ].slice(-80);
-        } else {
-          moodDelta -= 3;
-          memories = [
-            ...memories,
-            { date: formatDate(g.date), age: g.age, text: 'Свидание прошло неловко, но дало опыт общения' },
-          ].slice(-80);
-        }
-      }
-
-      if (activity.id === 'speaking_course') {
-        socialTrustDelta += 0.25;
-        memories = [
-          ...memories,
-          { date: formatDate(g.date), age: g.age, text: 'Посетил занятие по ораторскому мастерству' },
-        ].slice(-80);
-      }
-
-      return advanceMinutes({
-        ...g,
-        cash: g.cash - activity.cost,
-        energy: clamp(g.energy - activity.energy),
-        fatigue: clamp(g.fatigue + activity.fatigue),
-        mood: clamp(g.mood + moodDelta),
-        stress: clamp(g.stress + activity.stress),
-        charisma: clamp(g.charisma + charismaGain),
-        people,
-        hidden: {
-          ...g.hidden,
-          socialTrust: clamp(g.hidden.socialTrust + socialTrustDelta),
-          loneliness: clamp(g.hidden.loneliness + lonelinessDelta),
-        },
-        socialDoneToday: {
-          ...g.socialDoneToday,
-          [activity.id]: true,
-        },
-        socialStats: {
-          ...g.socialStats,
-          conversations: g.socialStats.conversations + (activity.id === 'casual_talk' ? 1 : 0),
-          meetups: g.socialStats.meetups + (activity.id === 'friends_meet' ? 1 : 0),
-          networking: g.socialStats.networking + (activity.id === 'networking' ? 1 : 0),
-          dates: g.socialStats.dates + (activity.id === 'date' ? 1 : 0),
-          courses: g.socialStats.courses + (activity.id === 'speaking_course' ? 1 : 0),
-          newConnections: g.socialStats.newConnections + newConnections,
-        },
-        stats: {
-          ...g.stats,
-          totalSpent: g.stats.totalSpent + activity.cost,
-        },
-      }, activity.minutes);
-    });
-  };
-
-  const sleep = (hours) => {
-    if (hours < 4) return;
-    patch(g => {
-      const recovery = hours >= 8 ? 78 : hours >= 7 ? 66 : hours >= 6 ? 54 : 34;
-      const fatigueDrop = hours >= 8 ? 70 : hours >= 7 ? 59 : hours >= 6 ? 45 : 27;
-      const healthDelta = hours >= 7 ? 0.3 : -0.25;
-      const moodDelta = hours >= 7 ? 2 : -3;
-      return advanceMinutes({
-        ...g,
-        energy: clamp(g.energy + recovery),
-        fatigue: clamp(g.fatigue - fatigueDrop),
-        satiety: clamp(g.satiety - hours * 1.6),
-        health: clamp(g.health + healthDelta),
-        mood: clamp(g.mood + moodDelta),
-        stress: clamp(g.stress - (hours >= 7 ? 8 : 3)),
-        hidden: {
-          ...g.hidden,
-          longTermHealth: clamp(g.hidden.longTermHealth + (hours >= 7 ? 0.08 : -0.12)),
-          burnout: clamp(g.hidden.burnout - (hours >= 7 ? 0.35 : 0.1)),
-        },
-      }, hours * 60);
-    });
-  };
-
-  const jobAvailable = (job) => {
-    const r = job.req;
-    return game.intelligence >= r.intelligence &&
-      game.charisma >= r.charisma &&
-      game.professionalSkill >= r.skill &&
-      game.reputation >= r.reputation;
-  };
-
-  const takeJob = (job) => {
-    if (!jobAvailable(job)) return Alert.alert('Вакансия недоступна', 'Не хватает навыков или репутации.');
-    patch(g => ({
-      ...g,
-      jobId: job.id,
-      workedToday: false,
-      stats: { ...g.stats, jobsHeld: g.stats.jobsHeld + 1 },
-    }));
-  };
-
-  const buyPhone = (p) => {
-    if (game.cash < p.price) return Alert.alert('Недостаточно денег');
-    const old = getPhone(game.phoneId);
-    const oldValue = old
-      ? Math.max(50, Math.round(old.price * (0.25 + 0.45 * (clamp(game.phoneCondition) / 100))))
-      : 0;
-
-    Alert.alert(
-      `${p.brand} ${p.model}`,
-      old
-        ? `Купить за ${money(p.price)} ₴?
-
-Текущий ${old.brand} ${old.model} останется у тебя только если сначала продать его вручную. При прямой замене старый телефон будет сдан в trade-in за ${money(oldValue)} ₴.`
-        : `Купить за ${money(p.price)} ₴?`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: old ? 'Купить с trade-in' : 'Купить',
-          onPress: () => patch(g => ({
-            ...g,
-            cash: g.cash - p.price + oldValue,
-            phoneId: p.id,
-            phoneCondition: 100,
-            mood: clamp(g.mood + Math.min(8, p.prestige / 15)),
-            monthly: { ...g.monthly, purchases: g.monthly.purchases + Math.max(0, p.price - oldValue) },
-            stats: {
-              ...g.stats,
-              totalSpent: g.stats.totalSpent + p.price,
-              totalEarned: g.stats.totalEarned + oldValue,
-            },
-          })),
-        },
-      ]
-    );
-  };
-
-  const buyCar = (car) => {
-    if (game.cash < car.price) return Alert.alert('Недостаточно денег');
-    Alert.alert(
-      `${car.brand} ${car.model}`,
-      `Стоимость ${money(car.price)} ₴. Ежемесячное содержание около ${money(car.monthly)} ₴.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Купить',
-          onPress: () => patch(g => {
-            const uid = `${car.id}_${Date.now()}`;
-            return {
-              ...g,
-              cash: g.cash - car.price,
-              cars: [...g.cars, { uid, catalogId: car.id, condition: 100, mileage: 0 }],
-              activeCarId: g.activeCarId || uid,
-              mood: clamp(g.mood + Math.min(10, car.prestige / 10)),
-              stats: { ...g.stats, totalSpent: g.stats.totalSpent + car.price },
-            };
-          }),
-        },
-      ]
-    );
-  };
-
-  const sellCar = (owned) => {
-    const base = CARS.find(x => x.id === owned.catalogId);
-    if (!base) return;
-    const price = Math.round(base.price * (owned.condition / 100) * 0.68);
-    Alert.alert('Продать автомобиль?', `Ориентировочно ${money(price)} ₴`, [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Продать',
-        style: 'destructive',
-        onPress: () => patch(g => ({
-          ...g,
-          cash: g.cash + price,
-          cars: g.cars.filter(x => x.uid !== owned.uid),
-          activeCarId: g.activeCarId === owned.uid ? null : g.activeCarId,
-          stats: { ...g.stats, totalEarned: g.stats.totalEarned + price },
-        })),
-      },
-    ]);
-  };
-
-  const chooseHousing = (h) => {
-    if (h.type === 'rent') {
-      patch(g => ({ ...g, housingId: h.id }));
-      return;
-    }
-    const owns = game.properties.some(p => p.catalogId === h.id);
-    if (owns) {
-      patch(g => ({ ...g, housingId: h.id }));
-      return;
-    }
-    if (game.cash < h.price) return Alert.alert('Недостаточно денег');
-    Alert.alert('Покупка недвижимости', `${h.name}\n${money(h.price)} ₴`, [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Купить',
-        onPress: () => patch(g => ({
-          ...g,
-          cash: g.cash - h.price,
-          housingId: h.id,
-          properties: [...g.properties, { catalogId: h.id, boughtAt: g.date, condition: 100 }],
-          stats: { ...g.stats, totalSpent: g.stats.totalSpent + h.price },
-        })),
-      },
-    ]);
-  };
-
-  const buyBusiness = (b) => {
-    if (game.cash < b.price) return Alert.alert('Недостаточно денег');
-    patch(g => ({
-      ...g,
-      cash: g.cash - b.price,
-      businesses: [...g.businesses, { uid: `${b.id}_${Date.now()}`, catalogId: b.id, lastMonthProfit: 0, condition: 100 }],
-      stats: { ...g.stats, totalSpent: g.stats.totalSpent + b.price },
-    }));
-  };
-
-
-  const sellPhone = () => {
-    const phone = getPhone(game.phoneId);
-    if (!phone) return Alert.alert('Телефон', 'У тебя нет телефона для продажи.');
-
-    const condition = clamp(game.phoneCondition);
-    const price = Math.max(50, Math.round(phone.price * (0.25 + 0.45 * (condition / 100))));
-
-    Alert.alert(
-      'Продать телефон?',
-      `${phone.brand} ${phone.model}\nСостояние: ${Math.round(condition)}%\nЦена выкупа: ${money(price)} ₴\n\nПосле продажи ты останешься без телефона. Некоторые подработки и возможности станут недоступны.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Продать',
-          style: 'destructive',
-          onPress: () => patch(g => ({
-            ...g,
-            cash: g.cash + price,
-            phoneId: null,
-            phoneCondition: 0,
-            stats: { ...g.stats, totalEarned: g.stats.totalEarned + price },
-            memories: [...g.memories, {
-              date: formatDate(g.date),
-              age: g.age,
-              text: `Продал ${phone.brand} ${phone.model} за ${money(price)} ₴`,
-            }].slice(-80),
-          })),
-        },
-      ]
-    );
-  };
-
-  const sellProperty = (owned, index) => {
-    const base = HOUSING.find(x => x.id === owned.catalogId);
-    if (!base || base.type !== 'buy') return;
-
-    const condition = clamp(owned.condition ?? 100);
-    const price = Math.round(base.price * (0.55 + 0.35 * (condition / 100)));
-    const isCurrent = game.housingId === owned.catalogId;
-
-    Alert.alert(
-      'Продать недвижимость?',
-      `${base.name}\nСостояние: ${Math.round(condition)}%\nОценка продажи: ${money(price)} ₴${isCurrent ? '\n\nЭто твоё текущее жильё. После продажи придётся переехать.' : ''}`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Продать',
-          style: 'destructive',
-          onPress: () => patch(g => {
-            const canReturnHome =
-              g.relatives.mother?.alive &&
-              (g.relatives.mother.relationship || 0) >= 20;
-
-            const nextHousing = isCurrent
-              ? (canReturnHome ? 'parents' : 'homeless')
-              : g.housingId;
-
-            return {
-              ...g,
-              cash: g.cash + price,
-              housingId: nextHousing,
-              properties: g.properties.filter((_, i) => i !== index),
-              stress: clamp(g.stress + (isCurrent ? (canReturnHome ? 3 : 12) : 0)),
-              stats: { ...g.stats, totalEarned: g.stats.totalEarned + price },
-              memories: [...g.memories, {
-                date: formatDate(g.date),
-                age: g.age,
-                text: `Продал недвижимость «${base.name}» за ${money(price)} ₴`,
-              }].slice(-80),
-            };
-          }),
-        },
-      ]
-    );
-  };
-
-  const sellBusiness = (owned) => {
-    const base = BUSINESS_CATALOG.find(x => x.id === owned.catalogId);
-    if (!base) return;
-    const condition = clamp(owned.condition ?? 100);
-    const profitFactor = owned.lastMonthProfit > 0 ? 0.08 : -0.06;
-    const price = Math.max(
-      Math.round(base.price * 0.35),
-      Math.round(base.price * (0.45 + 0.30 * condition / 100 + profitFactor))
-    );
-
-    Alert.alert(
-      'Продать бизнес?',
-      `${base.name}\nСостояние: ${Math.round(condition)}%\nПоследняя прибыль: ${money(owned.lastMonthProfit || 0)} ₴\nОценка продажи: ${money(price)} ₴`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Продать',
-          style: 'destructive',
-          onPress: () => patch(g => ({
-            ...g,
-            cash: g.cash + price,
-            businesses: g.businesses.filter(x => x.uid !== owned.uid),
-            stats: { ...g.stats, totalEarned: g.stats.totalEarned + price },
-            memories: [...g.memories, {
-              date: formatDate(g.date),
-              age: g.age,
-              text: `Продал бизнес «${base.name}» за ${money(price)} ₴`,
-            }].slice(-80),
-          })),
-        },
-      ]
-    );
-  };
-
-  const buyMarketAsset = (assetId, amount) => {
-    const asset = investmentAssetById(assetId);
-    if (!asset) return;
-    if (amount < 100) return Alert.alert('Слишком маленькая сумма');
-    if (game.cash < amount) return Alert.alert('Недостаточно денег');
-
-    patch(g => {
-      const price = investmentPrice(g, assetId);
-      const units = amount / price;
-      const portfolio = g.investmentPortfolio || START.investmentPortfolio;
-      const old = portfolio.holdings?.[assetId] || { units: 0, avgPrice: 0, invested: 0 };
-      const oldCost = (old.units || 0) * (old.avgPrice || price);
-      const newUnits = (old.units || 0) + units;
-      const avgPrice = newUnits > 0 ? (oldCost + amount) / newUnits : price;
-
-      return {
-        ...g,
-        cash: g.cash - amount,
-        investmentPortfolio: {
-          ...portfolio,
-          holdings: {
-            ...(portfolio.holdings || {}),
-            [assetId]: {
-              units: newUnits,
-              avgPrice,
-              invested: (old.invested || 0) + amount,
-            },
-          },
-        },
-        stats: { ...g.stats, totalSpent: g.stats.totalSpent + amount },
-        memories: [...g.memories, {
-          date: formatDate(g.date),
-          age: g.age,
-          text: `Инвестировал ${money(amount)} ₴ в ${asset.ticker}`,
-        }].slice(-80),
-      };
-    });
-  };
-
-  const sellMarketAsset = (assetId, fraction = 1) => {
-    const asset = investmentAssetById(assetId);
-    const holding = game.investmentPortfolio?.holdings?.[assetId];
-    if (!asset || !holding?.units) return;
-
-    const part = Math.max(0.01, Math.min(1, fraction));
-    const unitsToSell = holding.units * part;
-    const currentPrice = investmentPrice(game, assetId);
-    const proceeds = unitsToSell * currentPrice;
-    const costBasis = unitsToSell * (holding.avgPrice || currentPrice);
-    const pnl = proceeds - costBasis;
-
-    Alert.alert(
-      `Продать ${asset.ticker}?`,
-      `${part >= 0.999 ? 'Вся позиция' : `${Math.round(part * 100)}% позиции`}
-` +
-      `Получишь около ${money(proceeds)} ₴
-` +
-      `Результат: ${pnl >= 0 ? '+' : ''}${money(pnl)} ₴`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Продать',
-          onPress: () => patch(g => {
-            const portfolio = g.investmentPortfolio || START.investmentPortfolio;
-            const live = portfolio.holdings?.[assetId];
-            if (!live?.units) return g;
-            const liveUnitsToSell = live.units * part;
-            const livePrice = investmentPrice(g, assetId);
-            const liveProceeds = liveUnitsToSell * livePrice;
-            const liveCost = liveUnitsToSell * (live.avgPrice || livePrice);
-            const remaining = live.units - liveUnitsToSell;
-            const holdings = { ...(portfolio.holdings || {}) };
-
-            if (remaining <= 0.0000001) {
-              delete holdings[assetId];
-            } else {
-              holdings[assetId] = {
-                ...live,
-                units: remaining,
-                invested: Math.max(0, (live.invested || 0) - liveCost),
-              };
-            }
-
-            return {
-              ...g,
-              cash: g.cash + liveProceeds,
-              investmentPortfolio: {
-                ...portfolio,
-                holdings,
-                realizedPnL: (portfolio.realizedPnL || 0) + (liveProceeds - liveCost),
-              },
-              stats: {
-                ...g.stats,
-                totalEarned: g.stats.totalEarned + Math.max(0, liveProceeds - liveCost),
-              },
-              memories: [...g.memories, {
-                date: formatDate(g.date),
-                age: g.age,
-                text: `Продал ${asset.ticker}: ${liveProceeds - liveCost >= 0 ? '+' : ''}${money(liveProceeds - liveCost)} ₴`,
-              }].slice(-80),
-            };
-          }),
-        },
-      ]
-    );
-  };
-
-  const openDeposit = (productId, amount) => {
-    const product = DEPOSIT_PRODUCTS.find(x => x.id === productId);
-    if (!product) return;
-    if (amount < product.min) return Alert.alert('Минимальная сумма', `Нужно минимум ${money(product.min)} ₴.`);
-    if (game.cash < amount) return Alert.alert('Недостаточно денег');
-
-    patch(g => ({
-      ...g,
-      cash: g.cash - amount,
-      investmentPortfolio: {
-        ...(g.investmentPortfolio || START.investmentPortfolio),
-        deposits: [
-          ...(g.investmentPortfolio?.deposits || []),
-          {
-            uid: `deposit_${Date.now()}`,
-            productId,
-            principal: amount,
-            annualRate: product.annualRate,
-            termDays: product.termDays,
-            openedSerial: dateSerial(g.date),
-            maturitySerial: dateSerial(g.date) + product.termDays,
-            status: 'active',
-          },
-        ],
-      },
-      stats: { ...g.stats, totalSpent: g.stats.totalSpent + amount },
-    }));
-  };
-
-  const openBond = (productId, amount) => {
-    const product = BOND_PRODUCTS.find(x => x.id === productId);
-    if (!product) return;
-    if (amount < product.min) return Alert.alert('Минимальная сумма', `Нужно минимум ${money(product.min)} ₴.`);
-    if (game.cash < amount) return Alert.alert('Недостаточно денег');
-
-    patch(g => ({
-      ...g,
-      cash: g.cash - amount,
-      investmentPortfolio: {
-        ...(g.investmentPortfolio || START.investmentPortfolio),
-        bonds: [
-          ...(g.investmentPortfolio?.bonds || []),
-          {
-            uid: `bond_${Date.now()}`,
-            productId,
-            principal: amount,
-            annualRate: product.annualRate,
-            termDays: product.termDays,
-            openedSerial: dateSerial(g.date),
-            maturitySerial: dateSerial(g.date) + product.termDays,
-            status: 'active',
-          },
-        ],
-      },
-      stats: { ...g.stats, totalSpent: g.stats.totalSpent + amount },
-    }));
-  };
-
-  const closeFixedInvestment = (uid, kind) => {
-    const key = kind === 'bond' ? 'bonds' : 'deposits';
-    const item = game.investmentPortfolio?.[key]?.find(x => x.uid === uid && x.status === 'active');
-    if (!item) return;
-
-    const today = dateSerial(game.date);
-    const elapsed = Math.max(0, today - item.openedSerial);
-    const early = today < item.maturitySerial;
-    const earnedInterest = early
-      ? 0
-      : Math.round(item.principal * (item.annualRate / 100) * (item.termDays / 365));
-
-    // Early deposit withdrawal returns principal only.
-    // Early OVGZ sale is simplified as a 2% market discount.
-    const principalBack = early && kind === 'bond'
-      ? Math.round(item.principal * 0.98)
-      : item.principal;
-    const payout = principalBack + earnedInterest;
-
-    Alert.alert(
-      early ? 'Закрыть досрочно?' : 'Получить деньги?',
-      early
-        ? (kind === 'bond'
-            ? `При досрочной продаже ОВГЗ получишь примерно ${money(payout)} ₴.`
-            : `Проценты по депозиту будут потеряны. Вернётся ${money(payout)} ₴.`)
-        : `К выплате ${money(payout)} ₴.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Получить',
-          onPress: () => patch(g => {
-            const portfolio = g.investmentPortfolio || START.investmentPortfolio;
-            const list = (portfolio[key] || []).map(x => x.uid === uid
-              ? { ...x, status: 'closed', closedAt: g.date, payout, interest: earnedInterest }
-              : x
-            );
-            return {
-              ...g,
-              cash: g.cash + payout,
-              investmentPortfolio: {
-                ...portfolio,
-                [key]: list,
-                interestReceived: (portfolio.interestReceived || 0) + earnedInterest,
-                realizedPnL: (portfolio.realizedPnL || 0) + (payout - item.principal),
-              },
-              stats: {
-                ...g.stats,
-                totalEarned: g.stats.totalEarned + Math.max(0, earnedInterest),
-              },
-            };
-          }),
-        },
-      ]
-    );
-  };
-
-  const withdrawLegacyInvestments = () => {
-    const value = game.investmentPortfolio?.legacyValue || 0;
-    if (value <= 0) return;
-    patch(g => ({
-      ...g,
-      cash: g.cash + value,
-      investmentPortfolio: {
-        ...(g.investmentPortfolio || START.investmentPortfolio),
-        legacyValue: 0,
-      },
-    }));
-  };
-
-  const borrowFromPerson = (lenderKey, amount) => {
-    const activeSame = game.debts.some(d => d.status === 'active' && d.type === 'social' && d.lenderKey === lenderKey);
-    if (activeSame) return Alert.alert('Долг уже есть', 'Сначала верни предыдущие деньги этому человеку.');
-
-    let lenderName = 'Знакомый';
-    let lenderKind = 'friend';
-    let maxAmount = 0;
-    let dueDays = 30;
-
-    if (lenderKey === 'mother') {
-      if (game.housingId !== 'parents' || !game.relatives.mother.alive) {
-        return Alert.alert('Недоступно', 'Сейчас попросить деньги у мамы таким способом нельзя.');
-      }
-      lenderName = 'Мама';
-      lenderKind = 'family';
-      dueDays = 45;
-      maxAmount = Math.round(
-        1000 +
-        game.relatives.mother.relationship * 70 +
-        game.hidden.familyBond * 35 -
-        game.borrowingHistory.latePayments * 450
-      );
-    } else if (lenderKey === 'father') {
-      if (game.housingId !== 'parents' || !game.relatives.father.alive) {
-        return Alert.alert('Недоступно', 'Сейчас попросить деньги у отца таким способом нельзя.');
-      }
-      lenderName = 'Отец';
-      lenderKind = 'family';
-      dueDays = 45;
-      maxAmount = Math.round(
-        1000 +
-        game.relatives.father.relationship * 65 +
-        game.hidden.familyBond * 30 -
-        game.borrowingHistory.latePayments * 450
-      );
-    } else if (lenderKey === 'coworker') {
-      if (!game.jobId || game.hidden.careerTrust < 42) {
-        return Alert.alert('Недоступно', 'У тебя пока нет коллеги, готового одолжить деньги.');
-      }
-      lenderName = 'Коллега';
-      lenderKind = 'coworker';
-      dueDays = 30;
-      maxAmount = Math.round(1500 + game.hidden.careerTrust * 95 + game.hidden.reliability * 35);
-    } else {
-      if (game.hidden.socialTrust < 55) {
-        return Alert.alert('Недоступно', 'Пока среди знакомых нет человека, готового дать деньги в долг.');
-      }
-      lenderName = 'Знакомый';
-      lenderKind = 'friend';
-      dueDays = 35;
-      maxAmount = Math.round(1000 + game.hidden.socialTrust * 100 + game.hidden.reliability * 35);
-    }
-
-    maxAmount = Math.max(0, Math.min(maxAmount, 30000));
-    if (amount > maxAmount) {
-      return Alert.alert('Слишком большая просьба', `${lenderName} сейчас готов одолжить не больше ${money(maxAmount)} ₴.`);
-    }
-
-    const ratio = maxAmount > 0 ? amount / maxAmount : 1;
-    let approvalChance =
-      lenderKind === 'family' ? 0.92 :
-      lenderKind === 'coworker' ? 0.70 :
-      0.66;
-
-    approvalChance -= ratio * 0.16;
-    approvalChance += (game.hidden.reliability - 50) * 0.003;
-    approvalChance = Math.max(0.25, Math.min(0.98, approvalChance));
-
-    if (Math.random() > approvalChance) {
-      patch(g => ({
-        ...g,
-        stress: clamp(g.stress + 1),
-        memories: [
-          ...g.memories,
-          {
-            date: formatDate(g.date),
-            age: g.age,
-            text: `${lenderName} отказался одолжить ${money(amount)} ₴`,
-          },
-        ].slice(-80),
-      }));
-      return Alert.alert('Не получилось', `${lenderName} сейчас не готов одолжить эту сумму.`);
-    }
-
-    const dueDate = addDays(game.date, dueDays);
-    patch(g => ({
-      ...g,
-      cash: g.cash + amount,
-      stress: clamp(g.stress - 1),
-      debts: [
-        ...g.debts,
-        {
-          uid: `social_${lenderKey}_${Date.now()}`,
-          type: 'social',
-          lenderKey,
-          lenderKind,
-          lenderName,
-          originalPrincipal: amount,
-          principalRemaining: amount,
-          accruedInterest: 0,
-          penalties: 0,
-          status: 'active',
-          createdAt: g.date,
-          dueDate,
-          lateMarks: 0,
-        },
-      ],
-      memories: [
-        ...g.memories,
-        {
-          date: formatDate(g.date),
-          age: g.age,
-          text: `Одолжил ${money(amount)} ₴ у: ${lenderName}`,
-        },
-      ].slice(-80),
-    }));
-  };
-
-  const takeBankLoan = (amount, months) => {
-    const offer = calculateBankOffer(game, currentJob, netWorth);
-    if (!offer.approved) return Alert.alert('Банк отказал', offer.reason || 'Кредит сейчас недоступен.');
-    if (amount > offer.limit) {
-      return Alert.alert('Сумма недоступна', `Банк готов выдать максимум ${money(offer.limit)} ₴.`);
-    }
-
-    const monthlyPayment = Math.round(annuityPayment(amount, offer.apr, months));
-    const stableIncome = estimateStableIncome(game, currentJob);
-    if (stableIncome > 0 && bankMonthlyLoad(game) + monthlyPayment > stableIncome * 0.48) {
-      return Alert.alert('Высокая долговая нагрузка', 'Банк считает, что новый платёж будет слишком большим для текущего дохода.');
-    }
-
-    Alert.alert(
-      'Потребительский кредит',
-      `${money(amount)} ₴ на ${months} мес.
-Ставка: ${offer.apr}% годовых
-Платёж: около ${money(monthlyPayment)} ₴ / месяц`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Получить',
-          onPress: () => patch(g => ({
-            ...g,
-            cash: g.cash + amount,
-            debts: [
-              ...g.debts,
-              {
-                uid: `bank_${Date.now()}`,
-                type: 'bank',
-                lenderName: 'Банк',
-                originalPrincipal: amount,
-                principalRemaining: amount,
-                accruedInterest: 0,
-                penalties: 0,
-                apr: offer.apr,
-                termMonths: months,
-                monthlyPayment,
-                status: 'active',
-                createdAt: g.date,
-                lateMarks: 0,
-              },
-            ],
-            memories: [
-              ...g.memories,
-              { date: formatDate(g.date), age: g.age, text: `Оформил банковский кредит на ${money(amount)} ₴` },
-            ].slice(-80),
-          })),
-        },
-      ]
-    );
-  };
-
-  const takeMicroloan = (amount, termDays) => {
-    const offer = calculateMicroOffer(game);
-    if (!offer.approved) return Alert.alert('Микрозайм недоступен', offer.reason || 'Попробуй позже.');
-    if (amount > offer.limit) {
-      return Alert.alert('Сумма недоступна', `Доступно не больше ${money(offer.limit)} ₴.`);
-    }
-
-    const expectedInterest = Math.round(amount * offer.dailyRate * termDays);
-    const expectedTotal = amount + expectedInterest;
-    const dueDate = addDays(game.date, termDays);
-
-    Alert.alert(
-      'Микрозайм',
-      `${money(amount)} ₴ на ${termDays} дней
-Ставка: ${(offer.dailyRate * 100).toFixed(2)}% в день
-Если погасить вовремя: примерно ${money(expectedTotal)} ₴
-Просрочка быстро увеличивает долг.`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Взять деньги',
-          style: 'destructive',
-          onPress: () => patch(g => ({
-            ...g,
-            cash: g.cash + amount,
-            stress: clamp(g.stress + 2),
-            debts: [
-              ...g.debts,
-              {
-                uid: `micro_${Date.now()}`,
-                type: 'micro',
-                lenderName: 'Микрофинансовая организация',
-                originalPrincipal: amount,
-                principalRemaining: amount,
-                accruedInterest: 0,
-                penalties: 0,
-                dailyRate: offer.dailyRate,
-                overdueDailyPenalty: 0.004,
-                status: 'active',
-                createdAt: g.date,
-                dueDate,
-                lateMarks: 0,
-              },
-            ],
-            memories: [
-              ...g.memories,
-              { date: formatDate(g.date), age: g.age, text: `Взял микрозайм на ${money(amount)} ₴` },
-            ].slice(-80),
-          })),
-        },
-      ]
-    );
-  };
-
-  const repayDebt = (debt, amount = null) => {
-    const total = debtOutstanding(debt);
-    if (total <= 0) return;
-    const pay = Math.min(total, amount || total);
-    if (game.cash < pay) return Alert.alert('Недостаточно денег', `Для платежа нужно ${money(pay)} ₴.`);
-
-    patch(g => {
-      let history = { ...g.borrowingHistory };
-      let hidden = { ...g.hidden };
-      let relatives = { ...g.relatives };
-      let closed = false;
-      let interestPaid = 0;
-
-      const debts = g.debts.map(d => {
-        if (d.uid !== debt.uid || d.status !== 'active') return d;
-
-        let nd = { ...d };
-        let rest = pay;
-
-        const penaltyPart = Math.min(rest, nd.penalties || 0);
-        nd.penalties = Math.max(0, (nd.penalties || 0) - penaltyPart);
-        rest -= penaltyPart;
-
-        const interestPart = Math.min(rest, nd.accruedInterest || 0);
-        nd.accruedInterest = Math.max(0, (nd.accruedInterest || 0) - interestPart);
-        rest -= interestPart;
-        interestPaid += interestPart;
-
-        nd.principalRemaining = Math.max(0, (nd.principalRemaining || 0) - rest);
-
-        if (debtOutstanding(nd) <= 1) {
-          closed = true;
-          nd = { ...nd, principalRemaining: 0, accruedInterest: 0, penalties: 0, status: 'closed', closedAt: g.date };
-
-          if (nd.type === 'social') {
-            history.socialLoansClosed += 1;
-            hidden.reliability = clamp(hidden.reliability + (nd.lateMarks > 0 ? 1 : 5));
-            hidden.socialTrust = clamp(hidden.socialTrust + (nd.lateMarks > 0 ? 0 : 3));
-
-            if (nd.lenderKey === 'mother') {
-              hidden.familyBond = clamp(hidden.familyBond + (nd.lateMarks > 0 ? 1 : 4));
-              relatives.mother = {
-                ...relatives.mother,
-                relationship: clamp(relatives.mother.relationship + (nd.lateMarks > 0 ? 1 : 4)),
-              };
-            }
-            if (nd.lenderKey === 'father') {
-              hidden.familyBond = clamp(hidden.familyBond + (nd.lateMarks > 0 ? 1 : 4));
-              relatives.father = {
-                ...relatives.father,
-                relationship: clamp(relatives.father.relationship + (nd.lateMarks > 0 ? 1 : 4)),
-              };
-            }
-          } else if (nd.type === 'bank') {
-            history.bankLoansClosed += 1;
-            hidden.creditTrust = clamp(hidden.creditTrust + (nd.lateMarks > 0 ? 1 : 5));
-          } else if (nd.type === 'micro') {
-            history.microLoansClosed += 1;
-            hidden.creditTrust = clamp(hidden.creditTrust + (nd.lateMarks > 0 ? 0.5 : 2));
-          }
-        }
-
-        return nd;
-      });
-
-      history.totalInterestPaid += interestPaid;
-
-      return {
-        ...g,
-        cash: g.cash - pay,
-        debts,
-        relatives,
-        hidden,
-        borrowingHistory: history,
-        monthly: {
-          ...g.monthly,
-          debtPayments: g.monthly.debtPayments + pay,
-          interest: g.monthly.interest + interestPaid,
-        },
-        stats: { ...g.stats, totalSpent: g.stats.totalSpent + pay },
-        memories: closed
-          ? [...g.memories, { date: formatDate(g.date), age: g.age, text: `Полностью погасил долг перед ${debt.lenderName}` }].slice(-80)
-          : g.memories,
-      };
-    });
-  };
-
-  const resolveEvent = (choice) => {
-    if (!event) return;
-    if (choice.cost && game.cash < choice.cost) {
-      return Alert.alert('Недостаточно денег', 'Этот вариант сейчас недоступен.');
-    }
-
-    patch(g => {
-      let ng = { ...g };
-      if (choice.cost) {
-        ng.cash -= choice.cost;
-        ng.stats = { ...ng.stats, totalSpent: ng.stats.totalSpent + choice.cost };
-      }
-      const e = choice.effect || {};
-      ng.health = clamp(ng.health + (e.health || 0));
-      ng.energy = clamp(ng.energy + (e.energy || 0));
-      ng.fatigue = clamp(ng.fatigue + (e.fatigue || 0));
-      ng.satiety = clamp(ng.satiety + (e.satiety || 0));
-      ng.mood = clamp(ng.mood + (e.mood || 0));
-      ng.stress = clamp(ng.stress + (e.stress || 0));
-      ng.charisma = clamp(ng.charisma + (e.charisma || 0));
-      ng.hidden = {
-        ...ng.hidden,
-        familyBond: clamp(ng.hidden.familyBond + (e.familyBond || 0)),
-        socialTrust: clamp(ng.hidden.socialTrust + (e.socialTrust || 0)),
-        careerTrust: clamp(ng.hidden.careerTrust + (e.careerTrust || 0)),
-        empathy: clamp(ng.hidden.empathy + (e.empathy || 0)),
-        reliability: clamp(ng.hidden.reliability + (e.reliability || 0)),
-        loneliness: clamp(ng.hidden.loneliness + (e.loneliness || 0)),
-        longTermHealth: clamp(ng.hidden.longTermHealth + (e.longTermHealth || 0)),
-      };
-      ng.memories = [...ng.memories, {
-        date: formatDate(ng.date),
-        age: ng.age,
-        text: choice.memory,
-      }].slice(-80);
-
-      if (choice.special === 'promotion_try') {
-        const chance =
-          0.15 +
-          ng.hidden.careerTrust / 200 +
-          ng.reputation / 300 +
-          ng.professionalSkill / 400;
-        if (Math.random() < chance) {
-          ng.reputation = clamp(ng.reputation + 5);
-          ng.charisma = clamp(ng.charisma + 2);
-          ng.hidden.careerTrust = clamp(ng.hidden.careerTrust + 7);
-          ng.memories.push({ date: formatDate(ng.date), age: ng.age, text: 'Удачно проявил себя в разговоре о повышении' });
-        } else {
-          ng.stress = clamp(ng.stress + 3);
-        }
-      }
-
-      ng.pendingEventId = null;
-      if (e.time) ng = advanceMinutes(ng, e.time);
-      return ng;
-    });
-  };
-
-  const resetGame = () => {
-    Alert.alert('Начать новую жизнь?', 'Весь прогресс будет удалён.', [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Удалить',
-        style: 'destructive',
-        onPress: async () => {
-          await AsyncStorage.removeItem(SAVE_KEY);
-          setGame(START);
-          setScreen('home');
-        },
-      },
-    ]);
-  };
-
-  if (!loaded) {
-    return (
-      <View style={styles.loading}>
-        <StatusBar barStyle="light-content" />
-        <ActivityIndicator />
-        <Text style={styles.loadingText}>Загрузка сохранения…</Text>
-      </View>
-    );
-  }
-
-  if (!game.alive) {
-    return <DeathScreen game={game} netWorth={netWorth} resetGame={resetGame} />;
-  }
-
-  const props = {
-    game,
-    currentJob,
-    currentPhone,
-    currentHousing,
-    netWorth,
-    doWork,
-    eat,
-    eatAtHome,
-    doSideGig,
-    workout,
-    study,
-    doSocialActivity,
-    sleep,
-    takeJob,
-    jobAvailable,
-    buyPhone,
-    buyCar,
-    sellCar,
-    sellPhone,
-    sellProperty,
-    sellBusiness,
-    chooseHousing,
-    buyBusiness,
-    buyMarketAsset,
-    sellMarketAsset,
-    openDeposit,
-    openBond,
-    closeFixedInvestment,
-    withdrawLegacyInvestments,
-    borrowFromPerson,
-    takeBankLoan,
-    takeMicroloan,
-    repayDebt,
-    marketTab,
-    setMarketTab,
-    resetGame,
-    patch,
-  };
-
-  return (
-    <SafeAreaView style={styles.app}>
-      <StatusBar barStyle="light-content" />
-      <TopBar
-        game={game}
-        onSleepPress={() => setSleepModalVisible(true)}
-      />
-      <View style={styles.main}>
-        {screen === 'home' && <HomeScreen {...props} />}
-        {screen === 'career' && <CareerScreen {...props} />}
-        {screen === 'market' && <MarketScreen {...props} />}
-        {screen === 'finance' && <FinanceMarket {...props} />}
-        {screen === 'assets' && <AssetsScreen {...props} />}
-        {screen === 'more' && <MoreScreen {...props} />}
-      </View>
-      <BottomNav screen={screen} setScreen={setScreen} />
-      <EventModal event={event} onChoice={resolveEvent} />
-      <SleepModal
-        visible={sleepModalVisible}
-        game={game}
-        onClose={() => setSleepModalVisible(false)}
-        onSleep={(hours) => {
-          setSleepModalVisible(false);
-          sleep(hours);
-        }}
-      />
-    </SafeAreaView>
-  );
-}
-
-function TopBar({ game, onSleepPress }) {
-  const headerStats = [
-    { key: 'energy', short: 'ЭН', value: game.energy, inverse: false },
-    { key: 'fatigue', short: 'УС', value: game.fatigue, inverse: true },
-    { key: 'satiety', short: 'СЫТ', value: game.satiety, inverse: false },
-    { key: 'stress', short: 'СТР', value: game.stress, inverse: true },
-    { key: 'health', short: 'ЗД', value: game.health, inverse: false },
-    { key: 'mood', short: 'НАСТ', value: game.mood, inverse: false },
-  ];
-
-  return (
-    <View style={styles.topBar}>
-      <View style={styles.topBarMainRow}>
-        <View style={styles.topIdentity}>
-          <Text style={styles.logo}>LIFE</Text>
-          <Text style={styles.topDate}>
-            {formatDate(game.date)} · {formatTime(game.timeMinutes)}
-          </Text>
-        </View>
-
-        <View style={styles.topActions}>
-          <View style={styles.topMoneyBox}>
-            <Text style={styles.topMoneyLabel}>НАЛИЧНЫЕ</Text>
-            <Text style={styles.topMoney}>{money(game.cash)} ₴</Text>
-          </View>
-
-          <Pressable style={styles.sleepHeaderButton} onPress={onSleepPress}>
-            <Text style={styles.sleepHeaderIcon}>☾</Text>
-            <Text style={styles.sleepHeaderText}>Сон</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.headerStatsContent}
-        style={styles.headerStatsScroll}
-      >
-        {headerStats.map(item => (
-          <HeaderStat
-            key={item.key}
-            short={item.short}
-            value={item.value}
-            inverse={item.inverse}
-          />
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-function HeaderStat({ short, value, inverse }) {
-  const v = clamp(Math.round(value));
-  let color = C.green;
-
-  if (inverse) {
-    if (v >= 75) color = C.red;
-    else if (v >= 45) color = C.yellow;
-  } else {
-    if (v <= 30) color = C.red;
-    else if (v <= 60) color = C.yellow;
-  }
-
-  return (
-    <View style={styles.headerStat}>
-      <View style={[styles.headerStatDot, { backgroundColor: color }]} />
-      <Text style={styles.headerStatShort}>{short}</Text>
-      <Text style={styles.headerStatValue}>{v}</Text>
-    </View>
-  );
-}
-
-function HomeScreen({ game, currentJob, currentPhone, currentHousing, netWorth, doWork, eat, eatAtHome, workout, study, doSocialActivity, sleep }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>СЕГОДНЯ</Text>
-      <Text style={styles.heroTitle}>{game.age} лет</Text>
-      <Text style={styles.heroSub}>{formatDate(game.date)} · {formatTime(game.timeMinutes)}</Text>
-
-      <View style={styles.netCard}>
-        <Text style={styles.cardCaption}>Чистый капитал</Text>
-        <Text style={styles.netValue}>{money(netWorth)} ₴</Text>
-        <View style={styles.netLine} />
-        <View style={styles.dualRow}>
-          <SmallInfo label="Наличные" value={`${money(game.cash)} ₴`} />
-          <SmallInfo label="Работа" value={currentJob ? currentJob.name : 'Нет'} right />
-        </View>
-      </View>
-
-      <Section title="Состояние" right="организм" />
-      <View style={styles.grid2}>
-        <StateTile title="Энергия" value={game.energy} good high />
-        <StateTile title="Усталость" value={game.fatigue} good={false} high={false} />
-        <StateTile title="Сытость" value={game.satiety} good high />
-        <StateTile title="Стресс" value={game.stress} good={false} high={false} />
-        <StateTile title="Здоровье" value={game.health} good high />
-        <StateTile title="Настроение" value={game.mood} good high />
-      </View>
-
-      <Section title="День" right={`${formatTime(game.timeMinutes)}`} />
-      {currentJob && (
-        <ActionRow
-          title="Рабочая смена"
-          subtitle={`${currentJob.company} · ${currentJob.hours} ч`}
-          meta={game.workedToday ? 'Выполнено' : `−${currentJob.energy} энергии`}
-          disabled={game.workedToday}
-          onPress={doWork}
-        />
-      )}
-      <ActionRow title="Самообразование" subtitle="2 часа · интеллект" meta="−18 энергии" onPress={study} />
-      <ActionRow title="Тренировка" subtitle="1 ч 30 мин · форма и здоровье" meta="−22 энергии" onPress={workout} />
-
-      <Section title="Питание" />
-      {game.housingId === 'parents' && game.relatives.mother?.alive && (
-        <ActionRow
-          title="Поесть дома"
-          subtitle={`Мама готовит дома · использовано сегодня: ${game.familyMealsToday}`}
-          meta="Бесплатно"
-          onPress={eatAtHome}
-        />
-      )}
-      <ActionRow title="Перекус" subtitle="Быстро и дёшево" meta="120 ₴" onPress={() => eat('cheap')} />
-      <ActionRow title="Нормальная еда" subtitle="Сбалансированный приём пищи" meta="280 ₴" onPress={() => eat('normal')} />
-      <ActionRow title="Хороший ресторан" subtitle="Лучше настроение и питание" meta="650 ₴" onPress={() => eat('good')} />
-
-
-      <Section title="Социальная жизнь" right={`харизма ${game.charisma.toFixed(1)}`} />
-      {SOCIAL_ACTIVITIES.map(activity => {
-        const done = !!game.socialDoneToday?.[activity.id];
-        return (
-          <ActionRow
-            key={activity.id}
-            title={activity.name}
-            subtitle={activity.subtitle}
-            meta={done && !activity.repeatable ? 'Выполнено' : activity.cost > 0 ? `${money(activity.cost)} ₴` : 'Бесплатно'}
-            disabled={done && !activity.repeatable}
-            onPress={() => doSocialActivity(activity)}
-          />
-        );
-      })}
-
-      <Section title="Сон" right="восстановление" />
-      <View style={styles.choiceRow}>
-        {[6, 7, 8, 9].map(h => (
-          <Pressable key={h} style={styles.choicePill} onPress={() => sleep(h)}>
-            <Text style={styles.choicePillBig}>{h}</Text>
-            <Text style={styles.choicePillSmall}>часов</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Section title="Текущая жизнь" />
-      <InfoCard rows={[
-        ['Телефон', currentPhone ? `${currentPhone.brand} ${currentPhone.model}` : 'Нет телефона'],
-        ['Состояние телефона', `${Math.round(game.phoneCondition)}%`],
-        ['Жильё', currentHousing.name],
-        ['Автомобиль', game.activeCarId ? 'Есть' : 'Нет'],
-      ]} />
-    </ScrollView>
-  );
-}
-
-function CareerScreen({ game, currentJob, takeJob, jobAvailable, doSideGig }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>КАРЬЕРА</Text>
-      <Text style={styles.heroTitle}>Работа</Text>
-      <Text style={styles.heroSub}>Навыки, опыт и отношение людей важнее условных уровней.</Text>
-
-      {currentJob && (
-        <>
-          <Section title="Текущая должность" />
-          <View style={styles.featureCard}>
-            <Text style={styles.featureBrand}>{currentJob.company}</Text>
-            <Text style={styles.featureTitle}>{currentJob.name}</Text>
-            <Text style={styles.featurePrice}>{money(currentJob.salary)} ₴ / месяц</Text>
-            <Text style={styles.featureSub}>Опыт: {game.yearsExperience} года · Отработано в месяце: {game.workDaysMonth} дней</Text>
-          </View>
-        </>
-      )}
-
-      <Section title="Навыки" />
-      <Metric label="Интеллект" value={game.intelligence} />
-      <Metric label="Харизма" value={game.charisma} />
-      <Metric label="Профессиональный навык" value={game.professionalSkill} />
-      <Metric label="Репутация" value={game.reputation} />
-
-
-      <Section title="Подработки" right="оплата сразу" />
-      {SIDE_GIGS.map(gig => {
-        const available = gig.req(game);
-        const done = !!game.sideGigDoneToday?.[gig.id];
-        return (
-          <Pressable
-            key={gig.id}
-            style={[styles.listCard, done && { opacity: 0.45 }]}
-            disabled={done}
-            onPress={() => doSideGig(gig)}
-          >
-            <View style={styles.listTop}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.listBrand}>{gig.company}</Text>
-                <Text style={styles.listTitle}>{gig.name}</Text>
-              </View>
-              <Text style={[styles.statusText, { color: done ? C.muted : available ? C.green : C.red }]}>
-                {done ? 'СДЕЛАНО' : available ? 'ДОСТУПНО' : 'НЕДОСТУПНО'}
-              </Text>
-            </View>
-            <Text style={styles.listPrice}>+{money(gig.pay)} ₴ сегодня</Text>
-            <Text style={styles.productFoot}>
-              {gig.hours} ч · −{gig.energy} энергии · {gig.note}
-            </Text>
-          </Pressable>
-        );
-      })}
-
-      <Section title="Вакансии" />
-      {JOBS.map(job => {
-        const ok = jobAvailable(job);
-        const active = game.jobId === job.id;
-        return (
-          <Pressable
-            key={job.id}
-            style={[styles.listCard, active && styles.listCardActive]}
-            onPress={() => takeJob(job)}
-          >
-            <View style={styles.listTop}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.listBrand}>{job.company}</Text>
-                <Text style={styles.listTitle}>{job.name}</Text>
-              </View>
-              <Text style={[styles.statusText, { color: ok ? C.green : C.muted }]}>
-                {active ? 'РАБОТАЕТЕ' : ok ? 'ДОСТУПНО' : 'НЕДОСТУПНО'}
-              </Text>
-            </View>
-            <Text style={styles.listPrice}>{money(job.salary)} ₴ / месяц</Text>
-            {!ok && (
-              <View style={styles.requireBox}>
-                <Req label="Интеллект" current={game.intelligence} need={job.req.intelligence} />
-                <Req label="Харизма" current={game.charisma} need={job.req.charisma} />
-                <Req label="Навык" current={game.professionalSkill} need={job.req.skill} />
-                <Req label="Репутация" current={game.reputation} need={job.req.reputation} />
-              </View>
-            )}
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
-}
-
-function MarketScreen(props) {
-  const { marketTab, setMarketTab } = props;
-  return (
-    <View style={{ flex: 1 }}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabWrap} contentContainerStyle={styles.tabContent}>
-        {[
-          ['phones', 'Техника'],
-          ['cars', 'Авто'],
-          ['housing', 'Жильё'],
-          ['business', 'Бизнес'],
-          ['invest', 'Инвестиции'],
-        ].map(([id, label]) => (
-          <Pressable key={id} style={[styles.tab, marketTab === id && styles.tabActive]} onPress={() => setMarketTab(id)}>
-            <Text style={[styles.tabText, marketTab === id && styles.tabTextActive]}>{label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
-      {marketTab === 'phones' && <PhonesMarket {...props} />}
-      {marketTab === 'cars' && <CarsMarket {...props} />}
-      {marketTab === 'housing' && <HousingMarket {...props} />}
-      {marketTab === 'business' && <BusinessMarket {...props} />}
-      {marketTab === 'invest' && <InvestmentMarket {...props} />}
-    </View>
-  );
-}
-
-function PhonesMarket({ game, buyPhone }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.contentWithTabs} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>ТЕХНИКА</Text>
-      <Text style={styles.heroTitle}>Смартфоны</Text>
-      <Text style={styles.heroSub}>От старой дешёвой техники до флагманов.</Text>
-      {PHONES.map(p => {
-        const owned = game.phoneId === p.id;
-        return (
-          <View key={p.id} style={[styles.productCard, owned && styles.listCardActive]}>
-            <View style={styles.listTop}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.listBrand}>{p.brand} · {p.year}</Text>
-                <Text style={styles.productTitle}>{p.model}</Text>
-              </View>
-              {owned && <Text style={styles.owned}>ИСПОЛЬЗУЕТСЯ</Text>}
-            </View>
-            <Text style={styles.productPrice}>{money(p.price)} ₴</Text>
-            <Spec label="Производительность" value={p.performance} />
-            <Spec label="Камера" value={p.camera} />
-            <Spec label="Престиж" value={p.prestige} />
-            {!owned && (
-              <Pressable style={styles.buyButton} onPress={() => buyPhone(p)}>
-                <Text style={styles.buyButtonText}>Купить</Text>
-              </Pressable>
-            )}
-          </View>
-        );
-      })}
-    </ScrollView>
-  );
-}
-
-function CarsMarket({ game, buyCar }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.contentWithTabs} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>АВТОСАЛОНЫ</Text>
-      <Text style={styles.heroTitle}>Автомобили</Text>
-      <Text style={styles.heroSub}>Содержание автомобиля может быть важнее цены покупки.</Text>
-      {CARS.map(car => (
-        <View key={car.id} style={styles.productCard}>
-          <Text style={styles.listBrand}>{car.brand} · {car.year}</Text>
-          <Text style={styles.productTitle}>{car.model}</Text>
-          <Text style={styles.productPrice}>{money(car.price)} ₴</Text>
-          <Spec label="Надёжность" value={car.reliability} />
-          <Spec label="Комфорт" value={car.comfort} />
-          <Spec label="Престиж" value={car.prestige} />
-          <Text style={styles.productFoot}>Ориентировочные расходы: {money(car.monthly)} ₴ / месяц</Text>
-          <Pressable style={styles.buyButton} onPress={() => buyCar(car)}>
-            <Text style={styles.buyButtonText}>Купить автомобиль</Text>
-          </Pressable>
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
-
-function HousingMarket({ game, chooseHousing }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.contentWithTabs} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>НЕДВИЖИМОСТЬ</Text>
-      <Text style={styles.heroTitle}>Жильё</Text>
-      <Text style={styles.heroSub}>Комфорт влияет на качество восстановления и образ жизни.</Text>
-      {HOUSING.filter(h => h.type !== 'special').map(h => {
-        const active = game.housingId === h.id;
-        const owns = game.properties.some(p => p.catalogId === h.id);
-        return (
-          <View key={h.id} style={[styles.productCard, active && styles.listCardActive]}>
-            <Text style={styles.listBrand}>{h.type === 'rent' ? 'АРЕНДА' : 'ПОКУПКА'}</Text>
-            <Text style={styles.productTitle}>{h.name}</Text>
-            <Text style={styles.productPrice}>{h.type === 'buy' ? `${money(h.price)} ₴` : `${money(h.monthly)} ₴ / месяц`}</Text>
-            <Spec label="Комфорт" value={h.comfort} />
-            <Spec label="Престиж" value={h.prestige} />
-            <Text style={styles.productFoot}>Ежемесячные расходы: {money(h.monthly)} ₴</Text>
-            <Pressable style={styles.buyButton} onPress={() => chooseHousing(h)}>
-              <Text style={styles.buyButtonText}>{active ? 'Текущее жильё' : owns ? 'Переехать сюда' : h.type === 'rent' ? 'Арендовать' : 'Купить'}</Text>
-            </Pressable>
-          </View>
-        );
-      })}
-    </ScrollView>
-  );
-}
-
-function BusinessMarket({ game, buyBusiness }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.contentWithTabs} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>ПРЕДПРИНИМАТЕЛЬСТВО</Text>
-      <Text style={styles.heroTitle}>Бизнес</Text>
-      <Text style={styles.heroSub}>Прибыль не гарантирована и меняется от месяца к месяцу.</Text>
-      {BUSINESS_CATALOG.map(b => (
-        <View key={b.id} style={styles.productCard}>
-          <Text style={styles.listBrand}>ГОТОВЫЙ БИЗНЕС</Text>
-          <Text style={styles.productTitle}>{b.name}</Text>
-          <Text style={styles.productPrice}>{money(b.price)} ₴</Text>
-          <Text style={styles.productFoot}>Средняя дневная выручка до расходов: около {money(b.baseDaily)} ₴</Text>
-          <Pressable style={styles.buyButton} onPress={() => buyBusiness(b)}>
-            <Text style={styles.buyButtonText}>Открыть бизнес</Text>
-          </Pressable>
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
-
-function InvestmentMarket({
-  game,
-  buyMarketAsset,
-  sellMarketAsset,
-  openDeposit,
-  openBond,
-  closeFixedInvestment,
-  withdrawLegacyInvestments,
-}) {
-  const portfolio = game.investmentPortfolio || START.investmentPortfolio;
-  const marketValue = marketHoldingsValue(game);
-  const fixedValue = fixedInvestmentValue(game);
-  const totalValue = investmentTotalValue(game);
-
-  return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.contentWithTabs}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.kicker}>КАПИТАЛ</Text>
-      <Text style={styles.heroTitle}>Инвестиции</Text>
-      <Text style={styles.heroSub}>
-        Котировки внутри игры симулируются. Рыночные активы могут расти и падать,
-        а депозиты и ОВГЗ имеют фиксированный срок.
-      </Text>
-
-      <View style={styles.netCard}>
-        <Text style={styles.cardCaption}>Инвестиционный капитал</Text>
-        <Text style={styles.netValue}>{money(totalValue)} ₴</Text>
-        <View style={styles.netLine} />
-        <View style={styles.dualRow}>
-          <SmallInfo label="Биржа" value={`${money(marketValue)} ₴`} />
-          <SmallInfo label="Фиксированный доход" value={`${money(fixedValue)} ₴`} right />
-        </View>
-      </View>
-
-      {portfolio.legacyValue > 0 && (
-        <>
-          <Section title="Старый портфель" />
-          <View style={styles.featureCard}>
-            <Text style={styles.featureBrand}>МИГРАЦИЯ СОХРАНЕНИЯ</Text>
-            <Text style={styles.featureTitle}>Старый диверсифицированный фонд</Text>
-            <Text style={styles.featurePrice}>{money(portfolio.legacyValue)} ₴</Text>
-            <Text style={styles.featureSub}>
-              Деньги из предыдущей версии сохранены. Их можно вывести без потерь.
-            </Text>
-            <Pressable style={styles.buyButton} onPress={withdrawLegacyInvestments}>
-              <Text style={styles.buyButtonText}>Вывести в наличные</Text>
-            </Pressable>
-          </View>
-        </>
-      )}
-
-      <Section title="Биржа" right="симулируемые котировки" />
-      {INVESTMENT_ASSETS.map(asset => {
-        const price = investmentPrice(game, asset.id);
-        const holding = portfolio.holdings?.[asset.id];
-        const positionValue = (holding?.units || 0) * price;
-        const cost = (holding?.units || 0) * (holding?.avgPrice || price);
-        const pnl = positionValue - cost;
-        const move = portfolio.lastMarketMove?.[asset.id] || 0;
-
-        return (
-          <View key={asset.id} style={styles.productCard}>
-            <View style={styles.listTop}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.listBrand}>
-                  {asset.type === 'etf' ? 'ETF' : asset.type === 'crypto' ? 'КРИПТО' : 'АКЦИЯ'} · {asset.ticker}
-                </Text>
-                <Text style={styles.productTitle}>{asset.name}</Text>
-              </View>
-              <Text
-                style={[
-                  styles.statusText,
-                  { color: move >= 0 ? C.green : C.red },
-                ]}
-              >
-                {move >= 0 ? '+' : ''}{(move * 100).toFixed(1)}%
-              </Text>
-            </View>
-
-            <Text style={styles.productPrice}>{money(price)} ₴</Text>
-            <Text style={styles.productFoot}>
-              Риск: {asset.risk}
-              {asset.dividendYield > 0 ? ` · дивидендная доходность ≈ ${(asset.dividendYield * 100).toFixed(1)}%/год` : ''}
-            </Text>
-
-            {holding?.units > 0 && (
-              <View style={styles.requireBox}>
-                <Req label="Стоимость позиции" current={Math.round(positionValue)} need={Math.round(positionValue)} />
-                <View style={styles.reqRow}>
-                  <Text style={styles.reqLabel}>Средняя цена покупки</Text>
-                  <Text style={styles.reqValue}>{money(holding.avgPrice)} ₴</Text>
-                </View>
-                <View style={styles.reqRow}>
-                  <Text style={styles.reqLabel}>Прибыль / убыток</Text>
-                  <Text style={[styles.reqValue, { color: pnl >= 0 ? C.green : C.red }]}>
-                    {pnl >= 0 ? '+' : ''}{money(pnl)} ₴
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            <Text style={styles.productFoot}>Купить на сумму:</Text>
-            <View style={styles.inlineButtons}>
-              {[1000, 5000, 10000].map(amount => (
-                <Pressable
-                  key={amount}
-                  style={styles.smallButton}
-                  onPress={() => buyMarketAsset(asset.id, amount)}
-                >
-                  <Text style={styles.smallButtonText}>{money(amount)} ₴</Text>
-                </Pressable>
-              ))}
-            </View>
-
-            {holding?.units > 0 && (
-              <View style={styles.inlineButtons}>
-                <Pressable
-                  style={styles.smallButton}
-                  onPress={() => sellMarketAsset(asset.id, 0.5)}
-                >
-                  <Text style={styles.smallButtonText}>Продать 50%</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.smallButton, styles.dangerButton]}
-                  onPress={() => sellMarketAsset(asset.id, 1)}
-                >
-                  <Text style={[styles.smallButtonText, { color: C.red }]}>Продать всё</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        );
-      })}
-
-      <Section title="Банковские депозиты" />
-      {DEPOSIT_PRODUCTS.map(product => (
-        <View key={product.id} style={styles.listCard}>
-          <Text style={styles.listBrand}>ДЕПОЗИТ</Text>
-          <Text style={styles.listTitle}>{product.name}</Text>
-          <Text style={styles.listPrice}>{product.annualRate.toFixed(1)}% годовых</Text>
-          <Text style={styles.productFoot}>Минимум: {money(product.min)} ₴</Text>
-          <View style={styles.inlineButtons}>
-            {[product.min, product.min * 5, product.min * 10].map(amount => (
-              <Pressable
-                key={amount}
-                style={styles.smallButton}
-                onPress={() => openDeposit(product.id, amount)}
-              >
-                <Text style={styles.smallButtonText}>{money(amount)} ₴</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ))}
-
-      {(portfolio.deposits || []).filter(x => x.status === 'active').length > 0 && (
-        <>
-          <Section title="Мои депозиты" />
-          {(portfolio.deposits || []).filter(x => x.status === 'active').map(item => {
-            const remaining = Math.max(0, item.maturitySerial - dateSerial(game.date));
-            const expected = Math.round(
-              item.principal * (item.annualRate / 100) * (item.termDays / 365)
-            );
-            return (
-              <View key={item.uid} style={styles.featureCard}>
-                <Text style={styles.featureBrand}>АКТИВНЫЙ ДЕПОЗИТ</Text>
-                <Text style={styles.featureTitle}>{money(item.principal)} ₴</Text>
-                <Text style={styles.featurePrice}>+{money(expected)} ₴ к сроку</Text>
-                <Text style={styles.featureSub}>Осталось: {remaining} дней · {item.annualRate}% годовых</Text>
-                <Pressable
-                  style={styles.smallButton}
-                  onPress={() => closeFixedInvestment(item.uid, 'deposit')}
-                >
-                  <Text style={styles.smallButtonText}>Забрать досрочно</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </>
-      )}
-
-      <Section title="ОВГЗ" right="фиксированный доход" />
-      {BOND_PRODUCTS.map(product => (
-        <View key={product.id} style={styles.listCard}>
-          <Text style={styles.listBrand}>ГОСУДАРСТВЕННЫЕ ОБЛИГАЦИИ</Text>
-          <Text style={styles.listTitle}>{product.name}</Text>
-          <Text style={styles.listPrice}>{product.annualRate.toFixed(1)}% годовых</Text>
-          <Text style={styles.productFoot}>Минимум: {money(product.min)} ₴</Text>
-          <View style={styles.inlineButtons}>
-            {[product.min, product.min * 5, product.min * 10].map(amount => (
-              <Pressable
-                key={amount}
-                style={styles.smallButton}
-                onPress={() => openBond(product.id, amount)}
-              >
-                <Text style={styles.smallButtonText}>{money(amount)} ₴</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      ))}
-
-      {(portfolio.bonds || []).filter(x => x.status === 'active').length > 0 && (
-        <>
-          <Section title="Мои ОВГЗ" />
-          {(portfolio.bonds || []).filter(x => x.status === 'active').map(item => {
-            const remaining = Math.max(0, item.maturitySerial - dateSerial(game.date));
-            const expected = Math.round(
-              item.principal * (item.annualRate / 100) * (item.termDays / 365)
-            );
-            return (
-              <View key={item.uid} style={styles.featureCard}>
-                <Text style={styles.featureBrand}>ОВГЗ</Text>
-                <Text style={styles.featureTitle}>{money(item.principal)} ₴</Text>
-                <Text style={styles.featurePrice}>+{money(expected)} ₴ к погашению</Text>
-                <Text style={styles.featureSub}>До погашения: {remaining} дней · {item.annualRate}% годовых</Text>
-                <Pressable
-                  style={styles.smallButton}
-                  onPress={() => closeFixedInvestment(item.uid, 'bond')}
-                >
-                  <Text style={styles.smallButtonText}>Продать досрочно</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </>
-      )}
-
-      <Section title="Результат инвестиций" />
-      <InfoCard rows={[
-        ['Реализованная прибыль', `${portfolio.realizedPnL >= 0 ? '+' : ''}${money(portfolio.realizedPnL)} ₴`],
-        ['Получено дивидендов', `${money(portfolio.dividendsReceived)} ₴`],
-        ['Получено процентов', `${money(portfolio.interestReceived)} ₴`],
-      ]} />
-    </ScrollView>
-  );
-}
-
-
-function FinanceMarket({
-  game,
-  currentJob,
-  netWorth,
-  borrowFromPerson,
-  takeBankLoan,
-  takeMicroloan,
-  repayDebt,
-}) {
-  const bankOffer = calculateBankOffer(game, currentJob, netWorth);
-  const microOffer = calculateMicroOffer(game);
-
-  const motherMax = game.housingId === 'parents' && game.relatives.mother.alive
-    ? Math.max(0, Math.min(30000, Math.round(
-        1000 +
-        game.relatives.mother.relationship * 70 +
-        game.hidden.familyBond * 35 -
-        game.borrowingHistory.latePayments * 450
-      )))
-    : 0;
-
-  const fatherMax = game.housingId === 'parents' && game.relatives.father.alive
-    ? Math.max(0, Math.min(30000, Math.round(
-        1000 +
-        game.relatives.father.relationship * 65 +
-        game.hidden.familyBond * 30 -
-        game.borrowingHistory.latePayments * 450
-      )))
-    : 0;
-
-  const coworkerMax = game.jobId && game.hidden.careerTrust >= 42
-    ? Math.max(0, Math.min(30000, Math.round(
-        1500 + game.hidden.careerTrust * 95 + game.hidden.reliability * 35
-      )))
-    : 0;
-
-  const friendMax = game.hidden.socialTrust >= 55
-    ? Math.max(0, Math.min(30000, Math.round(
-        1000 + game.hidden.socialTrust * 100 + game.hidden.reliability * 35
-      )))
-    : 0;
-
-  const activeDebts = game.debts.filter(d => d.status === 'active');
-  const debtTotal = activeDebts.reduce((sum, d) => sum + debtOutstanding(d), 0);
-  const monthlyLoad = bankMonthlyLoad(game);
-
-  const requestOptions = (max) =>
-    [500, 1000, 2000, 3000, 5000, 10000, 20000].filter(v => v <= max);
-
-  return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.contentWithTabs}
-      showsVerticalScrollIndicator={false}
-    >
-      <Text style={styles.kicker}>ФИНАНСЫ</Text>
-      <Text style={styles.heroTitle}>Деньги в долг</Text>
-      <Text style={styles.heroSub}>
-        В трудный момент можно попросить близких, взять банковский кредит или обратиться в МФО.
-        У каждого решения есть последствия.
-      </Text>
-
-      <View style={styles.netCard}>
-        <Text style={styles.cardCaption}>Общий долг</Text>
-        <Text style={[styles.netValue, { color: debtTotal > 0 ? C.red : C.text }]}>
-          {money(debtTotal)} ₴
-        </Text>
-        <View style={styles.netLine} />
-        <View style={styles.dualRow}>
-          <SmallInfo label="Кредитная история" value={creditLabel(game)} />
-          <SmallInfo label="Платежи банкам" value={`${money(monthlyLoad)} ₴ / мес.`} right />
-        </View>
-      </View>
-
-      {activeDebts.length > 0 && (
-        <>
-          <Section title="Текущие долги" right={`${activeDebts.length}`} />
-          {activeDebts.map(debt => {
-            const total = debtOutstanding(debt);
-            const due = debt.dueDate ? daysUntil(game.date, debt.dueDate) : null;
-            const typeLabel =
-              debt.type === 'bank' ? 'БАНКОВСКИЙ КРЕДИТ' :
-              debt.type === 'micro' ? 'МИКРОЗАЙМ' :
-              'ЛИЧНЫЙ ДОЛГ';
-
-            return (
-              <View key={debt.uid} style={styles.productCard}>
-                <Text style={styles.listBrand}>{typeLabel}</Text>
-                <Text style={styles.productTitle}>{debt.lenderName}</Text>
-                <Text style={[styles.productPrice, { color: C.red }]}>{money(total)} ₴</Text>
-
-                {debt.type === 'bank' && (
-                  <>
-                    <Text style={styles.productFoot}>
-                      Ставка: {debt.apr}% годовых · плановый платёж {money(debt.monthlyPayment)} ₴ в месяц
-                    </Text>
-                    {(debt.penalties || 0) > 0 && (
-                      <Text style={[styles.productFoot, { color: C.red }]}>
-                        Просроченные начисления: {money(debt.penalties)} ₴
-                      </Text>
-                    )}
-                  </>
-                )}
-
-                {debt.type === 'micro' && (
-                  <>
-                    <Text style={styles.productFoot}>
-                      Ставка: {((debt.dailyRate || 0) * 100).toFixed(2)}% в день · срок:
-                      {' '}{due >= 0 ? `ещё ${due} дн.` : `просрочено ${Math.abs(due)} дн.`}
-                    </Text>
-                    <Text style={styles.productFoot}>
-                      Проценты: {money(debt.accruedInterest || 0)} ₴ · штрафы: {money(debt.penalties || 0)} ₴
-                    </Text>
-                  </>
-                )}
-
-                {debt.type === 'social' && (
-                  <Text style={styles.productFoot}>
-                    Вернуть до {formatDate(debt.dueDate)}
-                    {due < 0 ? ` · просрочено ${Math.abs(due)} дн.` : ''}
-                  </Text>
-                )}
-
-                <View style={styles.inlineButtons}>
-                  {total > 1500 && (
-                    <Pressable
-                      style={styles.smallButton}
-                      onPress={() => repayDebt(debt, Math.max(500, Math.round(total * 0.25)))}
-                    >
-                      <Text style={styles.smallButtonText}>Часть</Text>
-                    </Pressable>
-                  )}
-                  <Pressable style={styles.smallButton} onPress={() => repayDebt(debt)}>
-                    <Text style={styles.smallButtonText}>Погасить</Text>
-                  </Pressable>
-                </View>
-              </View>
-            );
-          })}
-        </>
-      )}
-
-      <Section title="Попросить у близких" right="без процентов" />
-
-      {motherMax > 0 ? (
-        <BorrowSource
-          title="Мама"
-          subtitle={`Отношения: ${Math.round(game.relatives.mother.relationship)}/100 · доступно до ${money(motherMax)} ₴`}
-          options={requestOptions(motherMax)}
-          onBorrow={(amount) => borrowFromPerson('mother', amount)}
-        />
-      ) : (
-        <Empty text="Попросить деньги у мамы сейчас недоступно. Это зависит от того, где ты живёшь и ваших отношений." />
-      )}
-
-      {fatherMax > 0 && (
-        <BorrowSource
-          title="Отец"
-          subtitle={`Отношения: ${Math.round(game.relatives.father.relationship)}/100 · доступно до ${money(fatherMax)} ₴`}
-          options={requestOptions(fatherMax)}
-          onBorrow={(amount) => borrowFromPerson('father', amount)}
-        />
-      )}
-
-      <Section title="Знакомые и коллеги" right="репутация важна" />
-
-      {coworkerMax > 0 ? (
-        <BorrowSource
-          title="Коллега"
-          subtitle={`Готов одолжить до ${money(coworkerMax)} ₴. Просрочка может ударить по отношениям на работе.`}
-          options={requestOptions(coworkerMax)}
-          onBorrow={(amount) => borrowFromPerson('coworker', amount)}
-        />
-      ) : (
-        <Empty text="Пока на работе нет человека, у которого удобно попросить деньги." />
-      )}
-
-      {friendMax > 0 ? (
-        <BorrowSource
-          title="Знакомый"
-          subtitle={`Социальные связи позволяют попросить до ${money(friendMax)} ₴.`}
-          options={requestOptions(friendMax)}
-          onBorrow={(amount) => borrowFromPerson('friend', amount)}
-        />
-      ) : (
-        <Empty text="Чем лучше отношения с людьми и твоя надёжность, тем больше возможностей появится здесь." />
-      )}
-
-      <Section title="Банковский кредит" right="дешевле, но строже" />
-
-      <View style={styles.productCard}>
-        <Text style={styles.listBrand}>ПЕРСОНАЛЬНОЕ ПРЕДЛОЖЕНИЕ</Text>
-        <Text style={styles.productTitle}>
-          {bankOffer.approved ? `До ${money(bankOffer.limit)} ₴` : 'Сейчас недоступно'}
-        </Text>
-
-        {bankOffer.approved ? (
-          <>
-            <Text style={styles.productFoot}>
-              Ориентировочная ставка: {bankOffer.apr}% годовых. Банк учитывает доход,
-              текущие долги и историю платежей.
-            </Text>
-
-            {[
-              [5000, 6],
-              [10000, 6],
-              [25000, 12],
-              [50000, 12],
-              [100000, 24],
-              [250000, 24],
-              [500000, 36],
-            ]
-              .filter(([amount]) => amount <= bankOffer.limit)
-              .map(([amount, months]) => {
-                const pay = Math.round(annuityPayment(amount, bankOffer.apr, months));
-                return (
-                  <Pressable
-                    key={`${amount}_${months}`}
-                    style={styles.loanOfferRow}
-                    onPress={() => takeBankLoan(amount, months)}
-                  >
-                    <View>
-                      <Text style={styles.loanOfferTitle}>{money(amount)} ₴</Text>
-                      <Text style={styles.loanOfferSub}>{months} мес. · около {money(pay)} ₴/мес.</Text>
-                    </View>
-                    <Text style={styles.loanOfferArrow}>›</Text>
-                  </Pressable>
-                );
-              })}
-          </>
-        ) : (
-          <Text style={styles.productFoot}>{bankOffer.reason}</Text>
-        )}
-      </View>
-
-      <Section title="Микрозайм" right="быстро и очень дорого" />
-
-      <View style={[styles.productCard, { borderColor: '#4A292E' }]}>
-        <Text style={[styles.listBrand, { color: C.red }]}>МФО</Text>
-        <Text style={styles.productTitle}>
-          {microOffer.approved ? `До ${money(microOffer.limit)} ₴` : 'Новый займ недоступен'}
-        </Text>
-
-        {microOffer.approved ? (
-          <>
-            <Text style={styles.productFoot}>
-              Ставка около {(microOffer.dailyRate * 100).toFixed(2)}% в день.
-              Это заметно дороже банковского кредита. Просрочка дополнительно увеличивает долг.
-            </Text>
-
-            {[1000, 3000, 5000, 10000, 20000, 30000]
-              .filter(v => v <= microOffer.limit)
-              .map(amount => {
-                const term = amount <= 5000 ? 14 : 30;
-                const total = Math.round(amount * (1 + microOffer.dailyRate * term));
-                return (
-                  <Pressable
-                    key={amount}
-                    style={styles.loanOfferRow}
-                    onPress={() => takeMicroloan(amount, term)}
-                  >
-                    <View>
-                      <Text style={styles.loanOfferTitle}>{money(amount)} ₴</Text>
-                      <Text style={styles.loanOfferSub}>
-                        {term} дней · вернуть примерно {money(total)} ₴
-                      </Text>
-                    </View>
-                    <Text style={[styles.loanOfferArrow, { color: C.red }]}>›</Text>
-                  </Pressable>
-                );
-              })}
-          </>
-        ) : (
-          <Text style={styles.productFoot}>{microOffer.reason}</Text>
-        )}
-      </View>
-
-      <Text style={styles.financeNote}>
-        Суммы и ставки — игровая модель, а не предложения реальных банков или МФО.
-        Внутри игры просрочки ухудшают кредитную историю, повышают стресс и могут портить отношения.
-      </Text>
-    </ScrollView>
-  );
-}
-
-function BorrowSource({ title, subtitle, options, onBorrow }) {
-  return (
-    <View style={styles.productCard}>
-      <Text style={styles.productTitle}>{title}</Text>
-      <Text style={styles.productFoot}>{subtitle}</Text>
-      {options.length > 0 ? (
-        <View style={styles.borrowGrid}>
-          {options.map(amount => (
-            <Pressable key={amount} style={styles.borrowChip} onPress={() => onBorrow(amount)}>
-              <Text style={styles.borrowChipText}>{money(amount)} ₴</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : (
-        <Text style={styles.productFoot}>Сейчас просить деньги не стоит.</Text>
-      )}
-    </View>
-  );
-}
-
-function AssetsScreen({ game, currentPhone, currentHousing, netWorth, sellCar, sellPhone, sellProperty, sellBusiness, patch }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>АКТИВЫ</Text>
-      <Text style={styles.heroTitle}>{money(netWorth)} ₴</Text>
-      <Text style={styles.heroSub}>Оценочная стоимость всего, чем ты владеешь.</Text>
-
-      <Section title="Техника" />
-      {currentPhone ? (
-        <View style={styles.featureCard}>
-          <Text style={styles.featureBrand}>{currentPhone.brand}</Text>
-          <Text style={styles.featureTitle}>{currentPhone.model}</Text>
-          <Text style={styles.featureSub}>Состояние: {Math.round(game.phoneCondition)}%</Text>
-          <Pressable style={[styles.smallButton, styles.dangerButton, { marginTop: 14 }]} onPress={sellPhone}>
-            <Text style={[styles.smallButtonText, { color: C.red }]}>Продать телефон</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <Empty text="Телефона нет. Некоторые подработки и жизненные возможности будут недоступны." />
-      )}
-
-      <Section title="Жильё" />
-      <View style={styles.featureCard}>
-        <Text style={styles.featureBrand}>ТЕКУЩЕЕ</Text>
-        <Text style={styles.featureTitle}>{currentHousing.name}</Text>
-        <Text style={styles.featureSub}>Расходы: {money(currentHousing.monthly)} ₴ / месяц</Text>
-      </View>
-
-      <Section title="Автомобили" right={`${game.cars.length}`} />
-      {game.cars.length === 0 && <Empty text="Автомобилей пока нет." />}
-      {game.cars.map(owned => {
-        const base = CARS.find(x => x.id === owned.catalogId);
-        if (!base) return null;
-        const active = game.activeCarId === owned.uid;
-        return (
-          <View key={owned.uid} style={[styles.productCard, active && styles.listCardActive]}>
-            <Text style={styles.listBrand}>{base.brand} · {base.year}</Text>
-            <Text style={styles.productTitle}>{base.model}</Text>
-            <Text style={styles.productFoot}>Пробег: {money(owned.mileage)} км · Состояние: {Math.round(owned.condition)}%</Text>
-            <View style={styles.inlineButtons}>
-              <Pressable style={styles.smallButton} onPress={() => patch(g => ({ ...g, activeCarId: owned.uid }))}>
-                <Text style={styles.smallButtonText}>{active ? 'Используется' : 'Использовать'}</Text>
-              </Pressable>
-              <Pressable style={[styles.smallButton, styles.dangerButton]} onPress={() => sellCar(owned)}>
-                <Text style={[styles.smallButtonText, { color: C.red }]}>Продать</Text>
-              </Pressable>
-            </View>
-          </View>
-        );
-      })}
-
-      <Section title="Недвижимость" right={`${game.properties.length}`} />
-      {game.properties.length === 0 && <Empty text="Собственной недвижимости нет." />}
-      {game.properties.map((p, i) => {
-        const h = HOUSING.find(x => x.id === p.catalogId);
-        return h ? (
-          <View key={`${p.catalogId}_${i}`} style={styles.listCard}>
-            <Text style={styles.listBrand}>СОБСТВЕННОСТЬ</Text>
-            <Text style={styles.listTitle}>{h.name}</Text>
-            <Text style={styles.listPrice}>{money(h.price)} ₴</Text>
-            <Text style={styles.productFoot}>Состояние: {Math.round(p.condition ?? 100)}%</Text>
-            <Pressable style={[styles.smallButton, styles.dangerButton, { marginTop: 12 }]} onPress={() => sellProperty(p, i)}>
-              <Text style={[styles.smallButtonText, { color: C.red }]}>Продать недвижимость</Text>
-            </Pressable>
-          </View>
-        ) : null;
-      })}
-
-      <Section title="Бизнесы" right={`${game.businesses.length}`} />
-      {game.businesses.length === 0 && <Empty text="Бизнесов пока нет." />}
-      {game.businesses.map(b => {
-        const base = BUSINESS_CATALOG.find(x => x.id === b.catalogId);
-        return base ? (
-          <View key={b.uid} style={styles.listCard}>
-            <Text style={styles.listBrand}>ВАШ БИЗНЕС</Text>
-            <Text style={styles.listTitle}>{base.name}</Text>
-            <Text style={[styles.listPrice, { color: b.lastMonthProfit >= 0 ? C.green : C.red }]}>
-              {b.lastMonthProfit >= 0 ? '+' : ''}{money(b.lastMonthProfit)} ₴ за прошлый месяц
-            </Text>
-            <Text style={styles.productFoot}>Состояние бизнеса: {Math.round(b.condition ?? 100)}%</Text>
-            <Pressable style={[styles.smallButton, styles.dangerButton, { marginTop: 12 }]} onPress={() => sellBusiness(b)}>
-              <Text style={[styles.smallButtonText, { color: C.red }]}>Продать бизнес</Text>
-            </Pressable>
-          </View>
-        ) : null;
-      })}
-    </ScrollView>
-  );
-}
-
-function MoreScreen({ game, netWorth, resetGame }) {
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.kicker}>ПЕРСОНАЖ</Text>
-      <Text style={styles.heroTitle}>{game.age} лет</Text>
-      <Text style={styles.heroSub}>История жизни формируется из решений, а не из уровней.</Text>
-
-      <Section title="Организм" />
-      <Metric label="Здоровье" value={game.health} />
-      <Metric label="Физическая форма" value={game.fitness} />
-      <Metric label="Стресс" value={game.stress} inverse />
-      <Metric label="Усталость" value={game.fatigue} inverse />
-
-
-      <Section title="Социальная жизнь" />
-      <InfoCard rows={[
-        ['Харизма', game.charisma.toFixed(1)],
-        ['Встречи с друзьями', String(game.socialStats?.meetups || 0)],
-        ['Нетворкинг', String(game.socialStats?.networking || 0)],
-        ['Свидания', String(game.socialStats?.dates || 0)],
-        ['Новые знакомства', String(game.socialStats?.newConnections || 0)],
-      ]} />
-
-      <Section title="Финансы за месяц" />
-      <InfoCard rows={[
-        ['Зарплата', `+${money(game.monthly.salary)} ₴`],
-        ['Подработки', `+${money(game.monthly.sideGigs || 0)} ₴`],
-        ['Бизнес', `${game.monthly.business >= 0 ? '+' : ''}${money(game.monthly.business)} ₴`],
-        ['Инвестиции', `${game.monthly.investments >= 0 ? '+' : ''}${money(game.monthly.investments)} ₴`],
-        ['Жильё', `−${money(game.monthly.housing)} ₴`],
-        ['Питание', `−${money(game.monthly.food)} ₴`],
-        ['Помощь семьи', `≈ ${money(game.monthly.familySupport || 0)} ₴`],
-        ['Транспорт', `−${money(game.monthly.transport)} ₴`],
-        ['Платежи по долгам', `−${money(game.monthly.debtPayments)} ₴`],
-        ['Из них проценты', `${money(game.monthly.interest)} ₴`],
-      ]} />
-
-      <Section title="Статистика" />
-      <InfoCard rows={[
-        ['Прожито дней', String(game.stats.daysLived)],
-        ['Чистый капитал', `${money(netWorth)} ₴`],
-        ['Всего заработано', `${money(game.stats.totalEarned)} ₴`],
-        ['Всего потрачено', `${money(game.stats.totalSpent)} ₴`],
-        ['Событий пережито', String(game.stats.eventsSeen)],
-        ['Заработано подработками', `${money(game.stats.sideGigEarned || 0)} ₴`],
-        ['Получено поддержки семьи', `≈ ${money(game.stats.familySupportValue || 0)} ₴`],
-        ['Активный долг', `${money(activeDebtTotal(game))} ₴`],
-        ['Кредитная история', creditLabel(game)],
-      ]} />
-
-      <Section title="Последние события" />
-      {game.memories.length === 0 && <Empty text="История пока только начинается." />}
-      {[...game.memories].reverse().slice(0, 12).map((m, i) => (
-        <View key={`${m.date}_${i}`} style={styles.memory}>
-          <Text style={styles.memoryDate}>{m.date} · {m.age} лет</Text>
-          <Text style={styles.memoryText}>{m.text}</Text>
-        </View>
-      ))}
-
-      <Pressable style={styles.reset} onPress={resetGame}>
-        <Text style={styles.resetText}>Начать новую жизнь</Text>
-      </Pressable>
-    </ScrollView>
-  );
-}
-
-function DeathScreen({ game, netWorth, resetGame }) {
-  return (
-    <SafeAreaView style={styles.app}>
-      <StatusBar barStyle="light-content" />
-      <ScrollView contentContainerStyle={styles.deathContent}>
-        <Text style={styles.kicker}>ЖИЗНЬ ЗАВЕРШЕНА</Text>
-        <Text style={styles.deathAge}>{game.age}</Text>
-        <Text style={styles.deathYears}>лет</Text>
-        <Text style={styles.deathCause}>Причина смерти: {game.causeOfDeath}</Text>
-        <View style={styles.netLine} />
-        <InfoCard rows={[
-          ['Прожито дней', String(game.stats.daysLived)],
-          ['Итоговый капитал', `${money(netWorth)} ₴`],
-          ['Всего заработано', `${money(game.stats.totalEarned)} ₴`],
-          ['Автомобили', String(game.cars.length)],
-          ['Недвижимость', String(game.properties.length)],
-          ['Бизнесы', String(game.businesses.length)],
-        ]} />
-        <Section title="Последние главы" />
-        {[...game.memories].reverse().slice(0, 10).map((m, i) => (
-          <View key={i} style={styles.memory}>
-            <Text style={styles.memoryDate}>{m.date} · {m.age} лет</Text>
-            <Text style={styles.memoryText}>{m.text}</Text>
-          </View>
-        ))}
-        <Pressable style={styles.buyButton} onPress={resetGame}>
-          <Text style={styles.buyButtonText}>Начать новую жизнь</Text>
-        </Pressable>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
-function SleepModal({ visible, game, onClose, onSleep }) {
-  const choices = [4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-  const describe = (hours) => {
-    if (hours <= 5) return 'Слишком мало: слабое восстановление и нагрузка на здоровье';
-    if (hours === 6) return 'Минимальный отдых: восстановление неполное';
-    if (hours === 7) return 'Нормальный сон';
-    if (hours === 8) return 'Оптимальное восстановление';
-    if (hours === 9) return 'Глубокое восстановление';
-    return 'Долгий сон: хорошо снимает усталость, но забирает больше времени';
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <Pressable style={styles.modalBackdropTap} onPress={onClose} />
-        <View style={styles.sleepModalCard}>
-          <View style={styles.sleepModalHeader}>
-            <View>
-              <Text style={styles.kicker}>СОН</Text>
-              <Text style={styles.modalTitle}>Сколько спать?</Text>
-            </View>
-            <Pressable style={styles.sleepCloseButton} onPress={onClose}>
-              <Text style={styles.sleepCloseText}>×</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.sleepCurrentState}>
-            <View style={styles.sleepStateItem}>
-              <Text style={styles.sleepStateLabel}>Сейчас</Text>
-              <Text style={styles.sleepStateValue}>{formatTime(game.timeMinutes)}</Text>
-            </View>
-            <View style={styles.sleepStateItem}>
-              <Text style={styles.sleepStateLabel}>Энергия</Text>
-              <Text style={styles.sleepStateValue}>{Math.round(game.energy)}%</Text>
-            </View>
-            <View style={styles.sleepStateItem}>
-              <Text style={styles.sleepStateLabel}>Усталость</Text>
-              <Text style={styles.sleepStateValue}>{Math.round(game.fatigue)}%</Text>
-            </View>
-          </View>
-
-          <ScrollView
-            style={styles.sleepChoicesScroll}
-            contentContainerStyle={styles.sleepChoicesContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {choices.map(hours => {
-              const wakeMinutes = (game.timeMinutes + hours * 60) % 1440;
-              const nextDay = game.timeMinutes + hours * 60 >= 1440;
-
-              return (
-                <Pressable
-                  key={hours}
-                  style={styles.sleepChoiceRow}
-                  onPress={() => onSleep(hours)}
-                >
-                  <View style={styles.sleepHoursBadge}>
-                    <Text style={styles.sleepHoursBig}>{hours}</Text>
-                    <Text style={styles.sleepHoursSmall}>ч</Text>
-                  </View>
-
-                  <View style={styles.sleepChoiceBody}>
-                    <Text style={styles.sleepChoiceTitle}>
-                      Сон {hours} {hours === 4 ? 'часа' : 'часов'}
-                    </Text>
-                    <Text style={styles.sleepChoiceDescription}>
-                      {describe(hours)}
-                    </Text>
-                    <Text style={styles.sleepWakeText}>
-                      Подъём: {nextDay ? 'завтра, ' : ''}{formatTime(wakeMinutes)}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.sleepChoiceArrow}>›</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function EventModal({ event, onChoice }) {
-  return (
-    <Modal visible={!!event} transparent animationType="fade">
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <Text style={styles.kicker}>СОБЫТИЕ</Text>
-          <Text style={styles.modalTitle}>{event?.title}</Text>
-          <Text style={styles.modalText}>{event?.text}</Text>
-          {event?.choices.map((c, i) => (
-            <Pressable key={i} style={styles.modalChoice} onPress={() => onChoice(c)}>
-              <Text style={styles.modalChoiceText}>{c.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function BottomNav({ screen, setScreen }) {
-  const items = [
-    ['home', 'Сегодня'],
-    ['career', 'Карьера'],
-    ['market', 'Рынок'],
-    ['finance', 'Финансы'],
-    ['assets', 'Активы'],
-    ['more', 'Ещё'],
-  ];
-  return (
-    <View style={styles.bottomNav}>
-      {items.map(([id, label]) => {
-        const active = screen === id;
-        return (
-          <Pressable key={id} style={styles.navItem} onPress={() => setScreen(id)}>
-            <View style={[styles.navDot, active && styles.navDotActive]} />
-            <Text style={[styles.navLabel, active && styles.navLabelActive]}>{label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function Section({ title, right }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {!!right && <Text style={styles.sectionRight}>{right}</Text>}
-    </View>
-  );
-}
-
-function SmallInfo({ label, value, right }) {
-  return (
-    <View style={right ? { alignItems: 'flex-end', maxWidth: '55%' } : { maxWidth: '45%' }}>
-      <Text style={styles.smallLabel}>{label}</Text>
-      <Text style={styles.smallValue} numberOfLines={1}>{value}</Text>
-    </View>
-  );
-}
-
-function StateTile({ title, value, good, high }) {
-  let color = C.green;
-  const v = Math.round(value);
-  if (good) {
-    if (v < 30) color = C.red;
-    else if (v < 60) color = C.yellow;
-  } else {
-    if (v > 75) color = C.red;
-    else if (v > 45) color = C.yellow;
-    else color = C.green;
-  }
-  return (
-    <View style={styles.stateTile}>
-      <Text style={styles.stateTitle}>{title}</Text>
-      <Text style={styles.stateValue}>{v}%</Text>
-      <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${clamp(v)}%`, backgroundColor: color }]} /></View>
-    </View>
-  );
-}
-
-function ActionRow({ title, subtitle, meta, onPress, disabled }) {
-  return (
-    <Pressable style={[styles.actionRow, disabled && { opacity: 0.45 }]} onPress={onPress} disabled={disabled}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.actionTitle}>{title}</Text>
-        <Text style={styles.actionSub}>{subtitle}</Text>
-      </View>
-      <Text style={styles.actionMeta}>{meta}</Text>
-    </Pressable>
-  );
-}
-
-function Metric({ label, value, inverse }) {
-  const v = clamp(Math.round(value));
-  let color = C.green;
-  if (inverse) {
-    if (v > 75) color = C.red;
-    else if (v > 45) color = C.yellow;
-  } else {
-    if (v < 30) color = C.red;
-    else if (v < 60) color = C.yellow;
-  }
-  return (
-    <View style={styles.metric}>
-      <View style={styles.dualRow}>
-        <Text style={styles.metricLabel}>{label}</Text>
-        <Text style={styles.metricValue}>{v}</Text>
-      </View>
-      <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${v}%`, backgroundColor: color }]} /></View>
-    </View>
-  );
-}
-
-function Req({ label, current, need }) {
-  const ok = current >= need;
-  return (
-    <View style={styles.reqRow}>
-      <Text style={styles.reqLabel}>{label}</Text>
-      <Text style={[styles.reqValue, { color: ok ? C.green : C.red }]}>{Math.round(current)} / {need}</Text>
-    </View>
-  );
-}
-
-function Spec({ label, value }) {
-  return (
-    <View style={styles.specRow}>
-      <Text style={styles.specLabel}>{label}</Text>
-      <View style={styles.specTrack}><View style={[styles.specFill, { width: `${clamp(value)}%` }]} /></View>
-      <Text style={styles.specValue}>{value}</Text>
-    </View>
-  );
-}
-
-function InfoCard({ rows }) {
-  return (
-    <View style={styles.infoCard}>
-      {rows.map((r, i) => (
-        <View key={i} style={[styles.infoRow, i === rows.length - 1 && { borderBottomWidth: 0 }]}>
-          <Text style={styles.infoLabel}>{r[0]}</Text>
-          <Text style={styles.infoValue}>{r[1]}</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function Empty({ text }) {
-  return <Text style={styles.empty}>{text}</Text>;
-}
-
-const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: C.bg },
-  main: { flex: 1 },
-  loading: { flex: 1, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { color: C.sub, marginTop: 12 },
-
-  topBar: {
-    backgroundColor: '#0D0F12',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1C2026',
-    paddingTop: 8,
-    paddingBottom: 7,
-  },
-  topBarMainRow: {
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  topIdentity: {
-    flex: 1,
-    minWidth: 0,
-  },
-  logo: { color: C.text, fontSize: 15, fontWeight: '900', letterSpacing: 3.2 },
-  topDate: { color: C.muted, fontSize: 9, marginTop: 3 },
-  topActions: {
-    marginLeft: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  topMoneyBox: {
-    alignItems: 'flex-end',
-  },
-  topMoneyLabel: {
-    color: C.muted,
-    fontSize: 7,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  topMoney: { color: C.text, fontSize: 14, fontWeight: '750', marginTop: 1 },
-  sleepHeaderButton: {
-    height: 38,
-    minWidth: 52,
-    paddingHorizontal: 10,
-    borderRadius: 11,
-    backgroundColor: C.surface2,
-    borderWidth: 1,
-    borderColor: C.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sleepHeaderIcon: {
-    color: C.accent,
-    fontSize: 14,
-    lineHeight: 14,
-  },
-  sleepHeaderText: {
-    color: C.text,
-    fontSize: 8,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  headerStatsScroll: {
-    marginTop: 7,
-  },
-  headerStatsContent: {
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  headerStat: {
-    minWidth: 57,
-    height: 29,
-    paddingHorizontal: 8,
-    borderRadius: 9,
-    backgroundColor: '#14171C',
-    borderWidth: 1,
-    borderColor: '#20242B',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerStatDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    marginRight: 5,
-  },
-  headerStatShort: {
-    color: C.muted,
-    fontSize: 7,
-    fontWeight: '800',
-    marginRight: 4,
-  },
-  headerStatValue: {
-    color: C.text,
-    fontSize: 9,
-    fontWeight: '800',
-  },
-
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingTop: 25, paddingBottom: 38 },
-  contentWithTabs: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 38 },
-
-  kicker: { color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: 7 },
-  heroTitle: { color: C.text, fontSize: 31, fontWeight: '760', letterSpacing: -0.8 },
-  heroSub: { color: C.sub, fontSize: 13, lineHeight: 19, marginTop: 6 },
-
-  netCard: {
-    marginTop: 22,
-    padding: 19,
-    borderRadius: 17,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  cardCaption: { color: C.sub, fontSize: 11 },
-  netValue: { color: C.text, fontSize: 31, fontWeight: '760', marginTop: 5, letterSpacing: -0.7 },
-  netLine: { height: 1, backgroundColor: C.border, marginVertical: 17 },
-  dualRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  smallLabel: { color: C.muted, fontSize: 10 },
-  smallValue: { color: C.text, fontSize: 12, fontWeight: '600', marginTop: 4 },
-
-  section: { marginTop: 28, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  sectionTitle: { color: C.text, fontSize: 16, fontWeight: '700' },
-  sectionRight: { color: C.muted, fontSize: 10 },
-
-  grid2: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  stateTile: {
-    width: '48.7%',
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  stateTitle: { color: C.muted, fontSize: 10 },
-  stateValue: { color: C.text, fontSize: 18, fontWeight: '700', marginTop: 4 },
-
-  progressTrack: { height: 4, borderRadius: 4, backgroundColor: '#292D34', overflow: 'hidden', marginTop: 9 },
-  progressFill: { height: '100%', borderRadius: 4 },
-
-  actionRow: {
-    minHeight: 68,
-    paddingHorizontal: 15,
-    paddingVertical: 13,
-    borderRadius: 14,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionTitle: { color: C.text, fontSize: 14, fontWeight: '650' },
-  actionSub: { color: C.muted, fontSize: 10, marginTop: 4 },
-  actionMeta: { color: C.sub, fontSize: 10, marginLeft: 12 },
-
-  choiceRow: { flexDirection: 'row', gap: 8 },
-  choicePill: {
-    flex: 1,
-    height: 62,
-    borderRadius: 13,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  choicePillBig: { color: C.text, fontSize: 16, fontWeight: '700' },
-  choicePillSmall: { color: C.muted, fontSize: 9, marginTop: 2 },
-
-  featureCard: {
-    padding: 17,
-    borderRadius: 15,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  featureBrand: { color: C.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.8 },
-  featureTitle: { color: C.text, fontSize: 18, fontWeight: '700', marginTop: 6 },
-  featurePrice: { color: C.green, fontSize: 14, fontWeight: '700', marginTop: 7 },
-  featureSub: { color: C.sub, fontSize: 11, marginTop: 7, lineHeight: 17 },
-
-  metric: {
-    padding: 14,
-    borderRadius: 13,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 7,
-  },
-  metricLabel: { color: C.sub, fontSize: 11 },
-  metricValue: { color: C.text, fontSize: 11, fontWeight: '700' },
-
-  listCard: {
-    padding: 16,
-    borderRadius: 15,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 9,
-  },
-  listCardActive: { borderColor: '#4E5577' },
-  listTop: { flexDirection: 'row', alignItems: 'flex-start' },
-  listBrand: { color: C.muted, fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
-  listTitle: { color: C.text, fontSize: 15, fontWeight: '700', marginTop: 4 },
-  listPrice: { color: C.green, fontSize: 14, fontWeight: '700', marginTop: 12 },
-  statusText: { fontSize: 8, fontWeight: '800', marginLeft: 8 },
-
-  requireBox: { marginTop: 13, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border },
-  reqRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
-  reqLabel: { color: C.muted, fontSize: 10 },
-  reqValue: { fontSize: 10, fontWeight: '700' },
-
-  tabWrap: { maxHeight: 51, borderBottomWidth: 1, borderBottomColor: '#181B20' },
-  tabContent: { paddingHorizontal: 14, gap: 5, alignItems: 'center' },
-  tab: { paddingHorizontal: 13, paddingVertical: 9, borderRadius: 10 },
-  tabActive: { backgroundColor: C.surface2 },
-  tabText: { color: C.muted, fontSize: 11, fontWeight: '600' },
-  tabTextActive: { color: C.text },
-
-  productCard: {
-    padding: 17,
-    borderRadius: 16,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 10,
-  },
-  productTitle: { color: C.text, fontSize: 20, fontWeight: '720', marginTop: 5, letterSpacing: -0.3 },
-  productPrice: { color: C.text, fontSize: 21, fontWeight: '720', marginTop: 13, marginBottom: 14 },
-  productFoot: { color: C.sub, fontSize: 10, lineHeight: 16, marginTop: 12 },
-  owned: { color: C.green, fontSize: 8, fontWeight: '800' },
-
-  specRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  specLabel: { color: C.sub, fontSize: 10, width: 115 },
-  specTrack: { flex: 1, height: 3, borderRadius: 3, backgroundColor: '#2A2E35', overflow: 'hidden' },
-  specFill: { height: '100%', backgroundColor: C.accent },
-  specValue: { color: C.text, fontSize: 10, fontWeight: '700', width: 28, textAlign: 'right' },
-
-  buyButton: {
-    marginTop: 16,
-    minHeight: 46,
-    borderRadius: 12,
-    backgroundColor: '#ECEEF2',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buyButtonText: { color: '#0A0B0D', fontSize: 12, fontWeight: '800' },
-
-  inlineButtons: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  smallButton: {
-    flex: 1, minHeight: 42, borderRadius: 11, backgroundColor: C.surface2,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border,
-  },
-  dangerButton: { backgroundColor: '#1A1214', borderColor: '#3A2227' },
-  smallButtonText: { color: C.text, fontSize: 10, fontWeight: '700' },
-
-  infoCard: {
-    backgroundColor: C.surface,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 15,
-  },
-  infoRow: {
-    minHeight: 47,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  infoLabel: { color: C.sub, fontSize: 10 },
-  infoValue: { color: C.text, fontSize: 10, fontWeight: '650', maxWidth: '60%', textAlign: 'right' },
-
-  memory: {
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  memoryDate: { color: C.muted, fontSize: 9 },
-  memoryText: { color: C.text, fontSize: 12, marginTop: 4, lineHeight: 17 },
-
-  empty: { color: C.muted, fontSize: 11, paddingVertical: 15 },
-
-  reset: { marginTop: 30, paddingVertical: 14, alignItems: 'center' },
-  resetText: { color: C.red, fontSize: 11 },
-
-  bottomNav: {
-    minHeight: 64,
-    flexDirection: 'row',
-    backgroundColor: '#0D0F12',
-    borderTopWidth: 1,
-    borderTopColor: '#191C21',
-    paddingTop: 7,
-  },
-  navItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  navDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#373B43', marginBottom: 7 },
-  navDotActive: { width: 14, backgroundColor: C.accent },
-  navLabel: { color: '#565C66', fontSize: 8 },
-  navLabelActive: { color: C.text },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'flex-end' },
-  modalBackdropTap: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  sleepModalCard: {
-    maxHeight: '78%',
-    backgroundColor: '#13161B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingTop: 20,
-    paddingHorizontal: 18,
-    paddingBottom: 24,
-  },
-  sleepModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  sleepCloseButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: C.surface2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sleepCloseText: {
-    color: C.sub,
-    fontSize: 22,
-    lineHeight: 24,
-  },
-  sleepCurrentState: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 16,
-    marginBottom: 10,
-  },
-  sleepStateItem: {
-    flex: 1,
-    padding: 10,
-    borderRadius: 11,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  sleepStateLabel: {
-    color: C.muted,
-    fontSize: 8,
-  },
-  sleepStateValue: {
-    color: C.text,
-    fontSize: 13,
-    fontWeight: '750',
-    marginTop: 3,
-  },
-  sleepChoicesScroll: {
-    marginTop: 2,
-  },
-  sleepChoicesContent: {
-    paddingBottom: 8,
-  },
-  sleepChoiceRow: {
-    minHeight: 76,
-    padding: 12,
-    borderRadius: 13,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sleepHoursBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: '#1B1F29',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sleepHoursBig: {
-    color: C.text,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  sleepHoursSmall: {
-    color: C.muted,
-    fontSize: 8,
-    marginTop: -1,
-  },
-  sleepChoiceBody: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  sleepChoiceTitle: {
-    color: C.text,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  sleepChoiceDescription: {
-    color: C.muted,
-    fontSize: 9,
-    lineHeight: 13,
-    marginTop: 3,
-  },
-  sleepWakeText: {
-    color: C.accent,
-    fontSize: 9,
-    fontWeight: '700',
-    marginTop: 5,
-  },
-  sleepChoiceArrow: {
-    color: C.muted,
-    fontSize: 22,
-    marginLeft: 8,
-  },
-  modalCard: {
-    backgroundColor: '#13161B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 22,
-    paddingBottom: 34,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  modalTitle: { color: C.text, fontSize: 23, fontWeight: '730', letterSpacing: -0.4 },
-  modalText: { color: C.sub, fontSize: 13, lineHeight: 20, marginTop: 10, marginBottom: 17 },
-  modalChoice: {
-    minHeight: 50,
-    borderRadius: 12,
-    backgroundColor: C.surface2,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 14,
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  modalChoiceText: { color: C.text, fontSize: 12, fontWeight: '600' },
-
-  deathContent: { paddingHorizontal: 22, paddingTop: 55, paddingBottom: 50 },
-  deathAge: { color: C.text, fontSize: 76, fontWeight: '750', letterSpacing: -3, marginTop: 20 },
-  deathYears: { color: C.sub, fontSize: 16 },
-  deathCause: { color: C.sub, fontSize: 12, marginTop: 20, lineHeight: 18 },
-
-  loanOfferRow: {
-    minHeight: 58,
-    marginTop: 9,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    borderRadius: 11,
-    backgroundColor: C.surface2,
-    borderWidth: 1,
-    borderColor: C.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  loanOfferTitle: { color: C.text, fontSize: 13, fontWeight: '750' },
-  loanOfferSub: { color: C.muted, fontSize: 9, marginTop: 4 },
-  loanOfferArrow: { color: C.accent, fontSize: 23, fontWeight: '400', marginLeft: 12 },
-  financeNote: { color: C.muted, fontSize: 9, lineHeight: 15, marginTop: 18, marginBottom: 8 },
-  borrowGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 13 },
-  borrowChip: {
-    paddingHorizontal: 12,
-    minHeight: 37,
-    borderRadius: 10,
-    backgroundColor: C.surface2,
-    borderWidth: 1,
-    borderColor: C.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  borrowChipText: { color: C.text, fontSize: 10, fontWeight: '700' },
+function EventModal({visible,event,onChoice}){if(!event)return null;return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.sheet}><Text style={styles.eventCat}>{event.cat.toUpperCase()}</Text><Text style={styles.eventTitle}>{event.title}</Text><Text style={styles.eventText}>{event.text}</Text>{event.choices.map((c,i)=><Pressable key={i} style={styles.choice} onPress={()=>onChoice(c)}><View style={{flex:1}}><Text style={styles.choiceTitle}>{c.label}</Text><Text style={styles.choiceCost}>{directText(c.direct)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}<Text style={styles.hint}>Показаны только непосредственные затраты. Скрытые последствия не раскрываются.</Text></View></View></Modal>;}
+function SleepModal({visible,game,onClose,onSleep}){return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.overlay}><Pressable style={StyleSheet.absoluteFillObject} onPress={onClose}/><View style={styles.sheet}><View style={styles.row}><Text style={styles.eventTitle}>Сколько спать?</Text><Pressable onPress={onClose}><Text style={styles.close}>×</Text></Pressable></View><Text style={styles.sub}>Сейчас {formatTime(game.timeMinutes)} · энергия {Math.round(game.energy)}% · усталость {Math.round(game.fatigue)}%</Text><ScrollView style={{maxHeight:430}}>{[4,5,6,7,8,9,10,11,12].map(h=><Pressable key={h} style={styles.choice} onPress={()=>onSleep(h)}><View style={styles.hourBox}><Text style={styles.hour}>{h}</Text><Text style={styles.small}>ч</Text></View><View style={{flex:1}}><Text style={styles.choiceTitle}>Сон {h} часов</Text><Text style={styles.choiceCost}>Подъём {game.timeMinutes+h*60>=1440?'завтра, ':''}{formatTime(game.timeMinutes+h*60)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}</ScrollView></View></View></Modal>;}
+function Nav({screen,setScreen}){return <View style={styles.nav}>{[['today','Сегодня'],['career','Карьера'],['finance','Деньги'],['market','Рынок'],['assets','Активы']].map(([id,t])=><Pressable key={id} style={styles.navItem} onPress={()=>setScreen(id)}><View style={[styles.marker,screen===id&&styles.markerOn]}/><Text style={[styles.navText,screen===id&&{color:C.text}]}>{t}</Text></Pressable>)}</View>;}
+
+function Section({title,right}){return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text>{right&&<Text style={styles.sectionRight}>{right}</Text>}</View>;}
+function Action({title,sub,meta,onPress,disabled}){return <Pressable style={[styles.action,disabled&&{opacity:.45}]} disabled={disabled} onPress={onPress}><View style={{flex:1}}><Text style={styles.roleTitle}>{title}</Text><Text style={styles.small}>{sub}</Text></View><Text style={styles.meta}>{meta}</Text></Pressable>;}
+function Mini({title,value,onPress}){return <Pressable style={styles.mini} onPress={onPress}><Text style={styles.roleTitle}>{title}</Text><Text style={styles.green}>{value}</Text></Pressable>;}
+function Status({label,value,warn}){return <View style={styles.status}><Text style={styles.small}>{label}</Text><Text style={[styles.statusVal,warn&&{color:C.yellow}]}>{value}</Text></View>;}
+function Row({l1,v1,l2,v2}){return <View style={styles.row}><View style={{flex:1}}><Text style={styles.small}>{l1}</Text><Text style={styles.statusVal}>{v1}</Text></View><View style={{flex:1,alignItems:'flex-end'}}><Text style={styles.small}>{l2}</Text><Text style={[styles.statusVal,{textAlign:'right'}]}>{v2}</Text></View></View>;}
+function Offer({title,sub,opts,pick,danger}){return <View style={[styles.product,danger&&{borderColor:'#47282C'}]}><Text style={styles.roleTitle}>{title}</Text><Text style={styles.small}>{sub}</Text><View style={styles.buttons}>{opts.map(a=><Btn key={a} text={`${money(a)} ₴`} danger={danger} onPress={()=>pick(a)}/>)}</View></View>;}
+function Btn({text,onPress,danger}){return <Pressable style={[styles.btn,danger&&styles.dangerBtn]} onPress={onPress}><Text style={[styles.btnText,danger&&{color:C.red}]}>{text}</Text></Pressable>;}
+function Prod({title,price,foot,current,onPress}){return <View style={[styles.product,current&&styles.active]}><Text style={styles.cardTitle}>{title}</Text><Text style={styles.price}>{money(price)} ₴</Text>{foot&&<Text style={styles.small}>{foot}</Text>}<Pressable disabled={current} style={[styles.buy,current&&{opacity:.45}]} onPress={onPress}><Text style={styles.buyText}>{current?'Используется':'Купить / выбрать'}</Text></Pressable></View>;}
+function Empty({text}){return <Text style={styles.empty}>{text}</Text>;}
+
+const styles=StyleSheet.create({
+ app:{flex:1,backgroundColor:C.bg},main:{flex:1},loading:{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'},loadingText:{color:C.sub,marginTop:12},
+ header:{backgroundColor:'#0C1014',borderBottomWidth:1,borderBottomColor:'#1B222A',paddingHorizontal:12,paddingTop:7,paddingBottom:8},
+ headerTop:{flexDirection:'row',alignItems:'center'},logo:{color:C.text,fontSize:15,fontWeight:'900',letterSpacing:3.4},headerDate:{color:C.muted,fontSize:8.2,marginTop:3},
+ moneyBox:{alignItems:'flex-end',marginHorizontal:8},moneyLabel:{color:C.muted,fontSize:6.4,fontWeight:'800',letterSpacing:.8},moneyValue:{color:C.text,fontSize:13,fontWeight:'800',marginTop:1},
+ sleepBtn:{width:45,height:36,borderRadius:10,backgroundColor:C.surface2,borderWidth:1,borderColor:C.border,alignItems:'center',justifyContent:'center'},moon:{color:C.accent,fontSize:13},sleepTxt:{color:C.text,fontSize:7,fontWeight:'700'},
+ needGrid:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between',marginTop:8,rowGap:6},need:{width:'32%',minWidth:0},needTop:{flexDirection:'row',justifyContent:'space-between',marginBottom:3},needLabel:{color:C.sub,fontSize:7.2,fontWeight:'600'},needVal:{color:C.text,fontSize:7.2,fontWeight:'800'},
+ track:{height:4,borderRadius:4,backgroundColor:'#272D34',overflow:'hidden'},fill:{height:'100%',borderRadius:4},
+ scroll:{flex:1},content:{paddingHorizontal:18,paddingTop:22,paddingBottom:38},kicker:{color:C.muted,fontSize:9,fontWeight:'800',letterSpacing:1.3,marginBottom:6},hero:{color:C.text,fontSize:29,fontWeight:'800',letterSpacing:-.7},sub:{color:C.sub,fontSize:11,lineHeight:17,marginTop:5},
+ bigCard:{marginTop:18,padding:16,borderRadius:17,backgroundColor:C.surface,borderWidth:1,borderColor:C.border},caption:{color:C.muted,fontSize:8,fontWeight:'800',letterSpacing:.6},bigMoney:{color:C.text,fontSize:28,fontWeight:'800',marginTop:5},cardTitle:{color:C.text,fontSize:17,fontWeight:'750',marginTop:5},
+ green:{color:C.green,fontSize:11,fontWeight:'750',marginTop:7},divider:{height:1,backgroundColor:C.border,marginVertical:14},row:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},
+ section:{marginTop:26,marginBottom:9,flexDirection:'row',justifyContent:'space-between',alignItems:'center'},sectionTitle:{color:C.text,fontSize:15,fontWeight:'750'},sectionRight:{color:C.muted,fontSize:8.2,maxWidth:'55%',textAlign:'right'},
+ action:{minHeight:64,borderRadius:14,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,paddingHorizontal:13,paddingVertical:11,marginBottom:8,flexDirection:'row',alignItems:'center'},roleTitle:{color:C.text,fontSize:12,fontWeight:'700'},small:{color:C.muted,fontSize:8.5,lineHeight:13,marginTop:4},meta:{color:C.sub,fontSize:8.5,marginLeft:9,maxWidth:90,textAlign:'right'},
+ miniRow:{flexDirection:'row',gap:7},mini:{flex:1,minHeight:60,borderRadius:13,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,padding:10,justifyContent:'center'},
+ status:{minHeight:49,borderRadius:13,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,paddingHorizontal:12,paddingVertical:9,marginBottom:7,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},statusVal:{color:C.text,fontSize:9.5,fontWeight:'650',maxWidth:'66%',textAlign:'right',marginTop:3},
+ company:{borderRadius:16,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,marginBottom:10,overflow:'hidden',paddingTop:14},active:{borderColor:'#50577C'},company:{borderRadius:16,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,marginBottom:10,overflow:'hidden',paddingTop:14,paddingHorizontal:14},
+ role:{minHeight:72,borderTopWidth:1,borderTopColor:C.border,marginHorizontal:-14,paddingHorizontal:13,paddingVertical:10,flexDirection:'row',alignItems:'center'},roleActive:{backgroundColor:'#141B18'},num:{width:28,height:28,borderRadius:8,backgroundColor:C.surface2,alignItems:'center',justifyContent:'center',marginRight:9},numText:{color:C.sub,fontSize:9,fontWeight:'800'},req:{color:C.muted,fontSize:7.4,lineHeight:11,marginTop:4},state:{fontSize:6.8,fontWeight:'800',marginLeft:7},
+ gig:{minHeight:67,borderRadius:14,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,padding:12,marginBottom:8,flexDirection:'row',alignItems:'center'},redSmall:{color:C.red,fontSize:7.8,marginTop:4},
+ product:{padding:15,borderRadius:15,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,marginBottom:9},price:{color:C.text,fontSize:19,fontWeight:'800',marginTop:10},buttons:{flexDirection:'row',gap:7,marginTop:12},btn:{flex:1,minHeight:39,borderRadius:10,backgroundColor:C.surface2,borderWidth:1,borderColor:C.border,alignItems:'center',justifyContent:'center'},dangerBtn:{backgroundColor:'#191214',borderColor:'#42262B'},btnText:{color:C.text,fontSize:8.5,fontWeight:'700'},
+ buy:{minHeight:44,marginTop:14,borderRadius:11,backgroundColor:'#EEF0F4',alignItems:'center',justifyContent:'center'},buyText:{color:'#0A0D10',fontSize:10.5,fontWeight:'800'},dangerText:{color:C.red,fontSize:9.5,fontWeight:'650',marginTop:12},
+ tabs:{minHeight:47,paddingHorizontal:9,flexDirection:'row',alignItems:'center',gap:4,borderBottomWidth:1,borderBottomColor:'#191E24',backgroundColor:'#0D1014'},tab:{flex:1,height:33,borderRadius:9,alignItems:'center',justifyContent:'center'},tabActive:{backgroundColor:C.surface2},tabText:{color:C.muted,fontSize:8.5,fontWeight:'650'},
+ memory:{paddingVertical:11,borderBottomWidth:1,borderBottomColor:C.border},memoryText:{color:C.text,fontSize:10,lineHeight:15,marginTop:4},empty:{color:C.muted,fontSize:9.5,lineHeight:15,paddingVertical:14},
+ nav:{minHeight:61,flexDirection:'row',backgroundColor:'#0C0F13',borderTopWidth:1,borderTopColor:'#1A2026',paddingTop:6},navItem:{flex:1,alignItems:'center',justifyContent:'center'},marker:{width:5,height:3,borderRadius:3,backgroundColor:'#343B45',marginBottom:7},markerOn:{width:19,backgroundColor:C.accent},navText:{color:'#59616C',fontSize:8},
+ overlay:{flex:1,backgroundColor:'rgba(0,0,0,.74)',justifyContent:'flex-end'},sheet:{backgroundColor:'#12161B',borderTopLeftRadius:24,borderTopRightRadius:24,borderWidth:1,borderColor:C.border,padding:19,paddingBottom:27},eventCat:{color:C.accent,fontSize:8,fontWeight:'900',letterSpacing:1.1},eventTitle:{color:C.text,fontSize:21,fontWeight:'800',marginTop:5},eventText:{color:C.sub,fontSize:11,lineHeight:17,marginTop:8,marginBottom:10},
+ choice:{minHeight:59,borderRadius:12,backgroundColor:C.surface2,borderWidth:1,borderColor:C.border,paddingHorizontal:12,paddingVertical:9,marginTop:7,flexDirection:'row',alignItems:'center'},choiceTitle:{color:C.text,fontSize:11,fontWeight:'650'},choiceCost:{color:C.yellow,fontSize:8.2,marginTop:4},arrow:{color:C.muted,fontSize:20,marginLeft:7},hint:{color:C.muted,fontSize:7.2,lineHeight:11,marginTop:12},close:{color:C.sub,fontSize:22},hourBox:{width:42,height:42,borderRadius:10,backgroundColor:C.surface,alignItems:'center',justifyContent:'center',marginRight:10},hour:{color:C.text,fontSize:15,fontWeight:'800'}
 });
 
-export default Game;
+export default App;
