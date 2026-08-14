@@ -266,7 +266,7 @@ function worth(g){
 }
 
 function App(){
- const [game,setGame]=useState(START),[screen,setScreen]=useState('today'),[loaded,setLoaded]=useState(false),[sleepOpen,setSleepOpen]=useState(false),[eventOpen,setEventOpen]=useState(false),[marketTab,setMarketTab]=useState('phones');
+ const [game,setGame]=useState(START),[screen,setScreen]=useState('today'),[loaded,setLoaded]=useState(false),[eventOpen,setEventOpen]=useState(false),[marketTab,setMarketTab]=useState('phones');
  const timer=useRef(null);
 
  useEffect(()=>{(async()=>{try{const raw=await AsyncStorage.getItem(SAVE_KEY);if(raw){const g=mergeSave(JSON.parse(raw));setGame(g);if(g.pendingEventId)setEventOpen(true);}}catch(e){console.log(e);}finally{setLoaded(true);}})();},[]);
@@ -416,7 +416,7 @@ function App(){
 
  return <SafeAreaView style={styles.app}>
   <StatusBar barStyle="light-content"/>
-  <Header game={game} onSleep={()=>setSleepOpen(true)}/>
+  <Header game={game} onSleep={()=>sleep(8)}/>
   <View style={styles.main}>
    {screen==='today'&&<Today {...common}/>}
    {screen==='career'&&<Career {...common}/>}
@@ -425,7 +425,6 @@ function App(){
    {screen==='assets'&&<Assets {...common}/>}
   </View>
   <Nav screen={screen} setScreen={setScreen}/>
-  <SleepModal visible={sleepOpen} game={game} onClose={()=>setSleepOpen(false)} onSleep={h=>{setSleepOpen(false);sleep(h);}}/>
   <EventModal visible={eventOpen&&!!game.pendingEventId} event={EVENTS[game.pendingEventId]} onChoice={resolveChoice}/>
  </SafeAreaView>;
 }
@@ -436,7 +435,7 @@ function Header({game,onSleep}){
   <View style={styles.headerTop}>
    <View style={{flex:1}}><Text style={styles.logo}>LIFE</Text><Text style={styles.headerDate}>{weekday(game.date)} · {formatDate(game.date)} · {formatTime(game.timeMinutes)}</Text></View>
    <View style={styles.moneyBox}><Text style={styles.moneyLabel}>НАЛИЧНЫЕ</Text><Text style={styles.moneyValue}>{money(game.cash)} ₴</Text></View>
-   <Pressable style={styles.sleepBtn} onPress={onSleep}><Text style={styles.moon}>☾</Text><Text style={styles.sleepTxt}>Сон</Text></Pressable>
+   <Pressable style={styles.sleepBtn} onPress={onSleep}><Text style={styles.moon}>☾</Text><Text style={styles.sleepTxt}>8 ч</Text></Pressable>
   </View>
   <View style={styles.needGrid}>{needs.map(([l,v,i])=><Need key={l} label={l} value={v} inverse={i}/>)}</View>
  </View>;
@@ -517,7 +516,6 @@ function Assets({game,phone,housing,capital,sellPhone,sellCar,sellProp,sellBiz,p
 }
 
 function EventModal({visible,event,onChoice}){if(!event)return null;return <Modal visible={visible} transparent animationType="fade"><View style={styles.overlay}><View style={styles.sheet}><Text style={styles.eventCat}>{event.cat.toUpperCase()}</Text><Text style={styles.eventTitle}>{event.title}</Text><Text style={styles.eventText}>{event.text}</Text>{event.choices.map((c,i)=><Pressable key={i} style={styles.choice} onPress={()=>onChoice(c)}><View style={{flex:1}}><Text style={styles.choiceTitle}>{c.label}</Text><Text style={styles.choiceCost}>{directText(c.direct)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}<Text style={styles.hint}>Показаны только непосредственные затраты. Скрытые последствия не раскрываются.</Text></View></View></Modal>;}
-function SleepModal({visible,game,onClose,onSleep}){return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><View style={styles.overlay}><Pressable style={StyleSheet.absoluteFillObject} onPress={onClose}/><View style={styles.sheet}><View style={styles.row}><Text style={styles.eventTitle}>Сколько спать?</Text><Pressable onPress={onClose}><Text style={styles.close}>×</Text></Pressable></View><Text style={styles.sub}>Сейчас {formatTime(game.timeMinutes)} · энергия {Math.round(game.energy)}% · усталость {Math.round(game.fatigue)}%</Text><ScrollView style={{maxHeight:430}}>{[4,5,6,7,8,9,10,11,12].map(h=><Pressable key={h} style={styles.choice} onPress={()=>onSleep(h)}><View style={styles.hourBox}><Text style={styles.hour}>{h}</Text><Text style={styles.small}>ч</Text></View><View style={{flex:1}}><Text style={styles.choiceTitle}>Сон {h} часов</Text><Text style={styles.choiceCost}>Подъём {game.timeMinutes+h*60>=1440?'завтра, ':''}{formatTime(game.timeMinutes+h*60)}</Text></View><Text style={styles.arrow}>›</Text></Pressable>)}</ScrollView></View></View></Modal>;}
 function Nav({screen,setScreen}){return <View style={styles.nav}>{[['today','Сегодня'],['career','Карьера'],['finance','Деньги'],['market','Рынок'],['assets','Активы']].map(([id,t])=><Pressable key={id} style={styles.navItem} onPress={()=>setScreen(id)}><View style={[styles.marker,screen===id&&styles.markerOn]}/><Text style={[styles.navText,screen===id&&{color:C.text}]}>{t}</Text></Pressable>)}</View>;}
 
 function Section({title,right}){return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text>{right&&<Text style={styles.sectionRight}>{right}</Text>}</View>;}
